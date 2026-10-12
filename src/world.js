@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const WORLD_SIZE = 320;
 const wind = { time: { value: 0 } };
@@ -39,7 +40,7 @@ function onRoad(x, z, margin = 0) {
 
 // Bends vertices sideways over time, more strongly the higher they are.
 // `stiffness` sets how much of the sway the lower part of the mesh receives.
-function addWind(material, strength, stiffness = 1.5) {
+function addWind(material, strength, stiffness = 1.5, base = 0) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = wind.time;
     shader.vertexShader = shader.vertexShader
@@ -52,7 +53,7 @@ function addWind(material, strength, stiffness = 1.5) {
         #else
           vec2 anchor = modelMatrix[3].xz;
         #endif
-        float bend = pow(max(transformed.y, 0.0), ${stiffness.toFixed(2)});
+        float bend = ${base.toFixed(2)} + pow(max(transformed.y, 0.0), ${stiffness.toFixed(2)});
         float gust = sin(uTime * 0.6 + anchor.x * 0.05) * 0.5 + 0.7;
         float sway = sin(uTime * 1.7 + anchor.x * 0.35 + anchor.y * 0.27)
                    + 0.35 * sin(uTime * 4.1 + transformed.x * 3.0 + anchor.y);
@@ -182,122 +183,204 @@ function buildHouse(scene, physics, cx, cz) {
   scene.add(floor);
 }
 
-// Trees are instanced: one trunk mesh and one canopy mesh per species.
+// ---- Textures painted at start-up (no downloads, no credits) ----
+
+function canvasTexture(size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// A ragged clump of small acacia leaves on a transparent background.
+function leafTexture(rand, hue) {
+  return canvasTexture(256, (g, n) => {
+    for (let i = 0; i < 900; i++) {
+      const a = rand() * Math.PI * 2;
+      const r = Math.pow(rand(), 0.6) * n * 0.46;
+      const x = n / 2 + Math.cos(a) * r;
+      const y = n / 2 + Math.sin(a) * r * 0.8;
+      const l = 30 + rand() * 24 - (r / n) * 8;
+      g.fillStyle = `hsl(${hue + rand() * 18}, ${38 + rand() * 20}%, ${l}%)`;
+      g.beginPath();
+      g.ellipse(x, y, 3 + rand() * 4, 1.5 + rand() * 2, rand() * Math.PI, 0, Math.PI * 2);
+      g.fill();
+    }
+    // A few twigs showing through.
+    g.strokeStyle = 'rgba(70,50,35,0.8)';
+    for (let i = 0; i < 10; i++) {
+      g.lineWidth = 1 + rand();
+      g.beginPath();
+      g.moveTo(n / 2, n / 2);
+      g.lineTo(n / 2 + (rand() - 0.5) * n * 0.8, n / 2 + (rand() - 0.5) * n * 0.6);
+      g.stroke();
+    }
+  });
+}
+
+// A tuft of thin, curved dry grass blades.
+function grassTexture(rand) {
+  return canvasTexture(256, (g, n) => {
+    for (let i = 0; i < 70; i++) {
+      const x0 = n * (0.25 + rand() * 0.5);
+      const h = n * (0.5 + rand() * 0.48);
+      const lean = (rand() - 0.5) * n * 0.5;
+      const w = 2 + rand() * 3;
+      const grad = g.createLinearGradient(0, n, 0, n - h);
+      const hue = 34 + rand() * 14;
+      grad.addColorStop(0, `hsl(${hue}, 40%, 28%)`);
+      grad.addColorStop(0.6, `hsl(${hue}, 55%, ${48 + rand() * 12}%)`);
+      grad.addColorStop(1, `hsl(${hue + 6}, 60%, ${68 + rand() * 12}%)`);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(x0 - w, n);
+      g.quadraticCurveTo(x0 + lean * 0.3, n - h * 0.6, x0 + lean, n - h);
+      g.quadraticCurveTo(x0 + lean * 0.3 + w * 0.5, n - h * 0.6, x0 + w, n);
+      g.fill();
+    }
+  });
+}
+
+function cardMaterial(map, strength, stiffness, base) {
+  return addWind(new THREE.MeshStandardMaterial({
+    map, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1,
+  }), strength, stiffness, base);
+}
+
+// Trunk with three forking branches, merged into one geometry for instancing.
+function acaciaTrunkGeometry() {
+  const parts = [];
+  const trunk = new THREE.CylinderGeometry(0.14, 0.3, 1, 7);
+  trunk.translate(0, 0.5, 0);
+  parts.push(trunk);
+  for (let i = 0; i < 3; i++) {
+    const b = new THREE.CylinderGeometry(0.05, 0.12, 0.6, 5);
+    b.translate(0, 0.3, 0);
+    b.rotateZ(0.7);
+    b.rotateY((i / 3) * Math.PI * 2);
+    b.translate(0, 0.85, 0);
+    parts.push(b);
+  }
+  return mergeGeometries(parts.map((g) => g.toNonIndexed()));
+}
+
+// Acacias: forked trunk plus a flat, layered umbrella of leaf cards.
 function buildTrees(scene, physics, rand, spots) {
-  const bark = new THREE.MeshStandardMaterial({ color: '#5e4a3a', roughness: 1 });
-  const leaf = addWind(new THREE.MeshStandardMaterial({ color: '#6f7f32', roughness: 1, flatShading: true }), 0.05, 1.0);
+  const bark = new THREE.MeshStandardMaterial({ color: '#5a463a', roughness: 1 });
+  const leaf = cardMaterial(leafTexture(rand, 62), 0.06, 1, 1);
 
-  // Acacia: leaning trunk with a flat umbrella of leaf clumps.
-  const trunkGeo = new THREE.CylinderGeometry(0.16, 0.32, 1, 6);
-  trunkGeo.translate(0, 0.5, 0);
-  const clump = new THREE.IcosahedronGeometry(1, 1);
-  clump.scale(1.5, 0.6, 1.5);
+  const card = new THREE.PlaneGeometry(1, 1);
+  card.rotateX(-Math.PI / 2); // lie flat, like the acacia's umbrella
 
-  const trunks = new THREE.InstancedMesh(trunkGeo, bark, spots.length);
-  const canopy = new THREE.InstancedMesh(clump, leaf, spots.length * 7);
+  const CARDS = 22;
+  const trunks = new THREE.InstancedMesh(acaciaTrunkGeometry(), bark, spots.length);
+  const canopy = new THREE.InstancedMesh(card, leaf, spots.length * CARDS);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
   const v = new THREE.Vector3();
-  const s = new THREE.Vector3();
+  const sc = new THREE.Vector3();
   const color = new THREE.Color();
   let k = 0;
-  spots.forEach(([x, z], i) => {
+  spots.forEach(([x, z, big], i) => {
     const y = groundHeight(x, z);
-    const h = 3.5 + rand() * 2.5;
-    const lean = (rand() - 0.5) * 0.25;
+    const h = big ? 5 : 2.8 + rand() * 1.8; // trunk; branches reach ~1.3 × this
+    const w = (big ? 1.8 : 1) * (2.2 + rand() * 1.4); // canopy radius
+    const lean = (rand() - 0.5) * 0.2;
     q.setFromEuler(e.set(lean, rand() * 6.28, lean));
-    m.compose(v.set(x, y, z), q, s.set(1, h, 1));
+    m.compose(v.set(x, y, z), q, sc.set(big ? 1.8 : 1, h, big ? 1.8 : 1));
     trunks.setMatrixAt(i, m);
-    const spread = 1.6 + rand() * 1.2;
-    for (let c = 0; c < 7; c++) {
-      const a = (c / 7) * 6.28 + rand();
-      const r = c === 0 ? 0 : spread * (0.6 + rand() * 0.5);
+    for (let c = 0; c < CARDS; c++) {
+      const a = rand() * 6.28;
+      const r = Math.sqrt(rand()) * w * 0.75;
+      const layer = rand();
       m.compose(
-        v.set(x + Math.cos(a) * r, y + h + 0.2 + rand() * 0.5, z + Math.sin(a) * r),
-        q.setFromEuler(e.set(0, rand() * 6.28, 0)),
-        s.setScalar(0.9 + rand() * 0.6)
+        // Sits on the branch tips (about 1.3 × trunk height); cards tilt so the
+        // canopy has depth from the side as well as from below.
+        v.set(x + Math.cos(a) * r, y + h * 1.22 + layer * 1.3 - (r / w) * 0.6, z + Math.sin(a) * r),
+        q.setFromEuler(e.set((rand() - 0.5) * 1.3, rand() * 6.28, (rand() - 0.5) * 1.3)),
+        sc.setScalar(w * (0.6 + rand() * 0.45))
       );
       canopy.setMatrixAt(k, m);
-      canopy.setColorAt(k, color.setHSL(0.18 + rand() * 0.05, 0.4, 0.38 + rand() * 0.1));
+      const t = 0.85 + rand() * 0.3;
+      canopy.setColorAt(k, color.setRGB(t, t, t * 0.9));
       k++;
     }
-    addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(2, 0.3), { x, y: y + 2, z });
+    addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(2, big ? 0.5 : 0.3), { x, y: y + 2, z });
   });
   trunks.castShadow = canopy.castShadow = true;
   trunks.receiveShadow = canopy.receiveShadow = true;
   scene.add(trunks, canopy);
 }
 
+// Bushes: a few upright leaf cards crossed at random angles.
 function buildBushes(scene, rand) {
   const count = 260;
-  const geo = new THREE.IcosahedronGeometry(0.7, 1);
-  geo.scale(1, 0.75, 1);
-  geo.translate(0, 0.45, 0);
-  const mat = addWind(new THREE.MeshStandardMaterial({ color: '#7d8a3a', roughness: 1, flatShading: true }), 0.06, 1.2);
-  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  const CARDS = 4;
+  const card = new THREE.PlaneGeometry(1.6, 1.3);
+  card.translate(0, 0.6, 0);
+  const mat = cardMaterial(leafTexture(rand, 70), 0.08, 1.2, 0);
+  const mesh = new THREE.InstancedMesh(card, mat, count * CARDS);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
+  const e = new THREE.Euler();
+  const sc = new THREE.Vector3();
   const color = new THREE.Color();
+  let k = 0;
   for (let i = 0; i < count; i++) {
     let x, z;
     do {
       x = (rand() - 0.5) * WORLD_SIZE * 0.85;
       z = (rand() - 0.5) * WORLD_SIZE * 0.85;
     } while (Math.hypot(x, z) < 24 || onRoad(x, z, 1.5));
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * 6.28);
-    const k = 0.6 + rand() * 1.4;
-    m.compose(new THREE.Vector3(x, groundHeight(x, z), z), q, s.set(k, k * (0.7 + rand() * 0.6), k));
-    mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, color.setHSL(0.15 + rand() * 0.07, 0.45, 0.3 + rand() * 0.12));
+    const size = 0.7 + rand() * 1.1;
+    const y = groundHeight(x, z) - 0.1;
+    const yaw = rand() * 6.28;
+    const tint = 0.8 + rand() * 0.35;
+    for (let c = 0; c < CARDS; c++) {
+      q.setFromEuler(e.set((rand() - 0.5) * 0.3, yaw + (c / CARDS) * Math.PI, 0));
+      m.compose(new THREE.Vector3(x, y, z), q, sc.set(size, size * (0.8 + rand() * 0.4), size));
+      mesh.setMatrixAt(k, m);
+      mesh.setColorAt(k, color.setRGB(tint, tint, tint * 0.85));
+      k++;
+    }
   }
   mesh.castShadow = mesh.receiveShadow = true;
   scene.add(mesh);
 }
 
-// Tall dry grass tufts that sway in the wind.
+// Tall dry grass: three crossed textured cards per tuft, swaying in the wind.
 function buildGrass(scene, rand) {
-  const count = 12000;
-  const blade = new THREE.PlaneGeometry(0.2, 0.8, 1, 3);
-  blade.translate(0, 0.4, 0);
-  // Taper each blade to a point.
-  const bp = blade.attributes.position;
-  for (let i = 0; i < bp.count; i++) bp.setX(i, bp.getX(i) * (1 - bp.getY(i) / 0.85));
-  const geo = new THREE.BufferGeometry();
-  // Three crossed blades per tuft so it reads from every angle.
-  const parts = [0, 1, 2].map((k) => blade.clone().rotateY((k * Math.PI) / 3));
-  const merged = parts.reduce((acc, g) => {
-    acc.pos.push(...g.attributes.position.array);
-    acc.nor.push(...g.attributes.normal.array);
-    const base = acc.count;
-    acc.idx.push(...g.index.array.map((i) => i + base));
-    acc.count += g.attributes.position.count;
-    return acc;
-  }, { pos: [], nor: [], idx: [], count: 0 });
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(merged.pos, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(merged.nor, 3));
-  geo.setIndex(merged.idx);
-  const mat = addWind(
-    new THREE.MeshStandardMaterial({ color: '#d4b26a', roughness: 1, side: THREE.DoubleSide }),
-    0.22, 2.0
-  );
+  const count = 6500;
+  const blade = new THREE.PlaneGeometry(1.1, 0.9, 1, 3);
+  blade.translate(0, 0.45, 0);
+  const geo = mergeGeometries([0, 1, 2].map((k) => blade.clone().rotateY((k * Math.PI) / 3)));
+  const mat = cardMaterial(grassTexture(rand), 0.2, 2.0, 0);
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
+  const e = new THREE.Euler();
+  const sc = new THREE.Vector3();
   const color = new THREE.Color();
   for (let i = 0; i < count; i++) {
     let x, z;
+    // Concentrated within 90 m of the village, where it is seen up close;
+    // beyond that the haze and the ground colour carry the look.
     do {
-      x = (rand() - 0.5) * WORLD_SIZE * 0.8;
-      z = (rand() - 0.5) * WORLD_SIZE * 0.8;
-    } while (Math.hypot(x, z) < 20 || onRoad(x, z));
-    q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.3, rand() * 6.28, (rand() - 0.5) * 0.3));
-    const k = 0.6 + rand() * 0.9;
-    m.compose(new THREE.Vector3(x, groundHeight(x, z), z), q, s.set(k, k * (0.8 + rand() * 0.6), k));
+      const a = rand() * Math.PI * 2;
+      const d = 18 + Math.pow(rand(), 0.8) * 72;
+      x = Math.cos(a) * d;
+      z = Math.sin(a) * d;
+    } while (onRoad(x, z));
+    q.setFromEuler(e.set((rand() - 0.5) * 0.2, rand() * 6.28, (rand() - 0.5) * 0.2));
+    const k = 0.7 + rand() * 0.8;
+    m.compose(new THREE.Vector3(x, groundHeight(x, z), z), q, sc.set(k, k * (0.8 + rand() * 0.5), k));
     mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, color.setHSL(0.1 + rand() * 0.04, 0.5, 0.45 + rand() * 0.15));
+    const t = 0.8 + rand() * 0.35;
+    mesh.setColorAt(i, color.setRGB(t, t * 0.97, t * 0.9));
   }
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -457,7 +540,7 @@ export function buildWorld(scene, physics) {
     if (!onRoad(x, z, 2.5)) treeSpots.push([x, z]);
   }
   // A big shade tree beside the road at the arrival point.
-  treeSpots.push([roadX(20) - 7, 20]);
+  treeSpots.push([roadX(40) - 8, 40, true]);
   buildTrees(scene, physics, rand, treeSpots);
   buildBushes(scene, rand);
   buildGrass(scene, rand);
