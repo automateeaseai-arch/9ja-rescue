@@ -7,6 +7,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 export const CHARACTERS = [
   { name: 'Hunter', url: 'models/Hunter_mobile.glb' },
   { name: 'Forest Scout', url: 'models/Female_Hunter_Forest_Scout_mobile.glb' },
+  { name: 'Female Soldier', url: 'models/Female_Soldier_Woodland_mobile.glb' },
 ];
 
 const WALK_SPEED = 1.7;   // metres per second
