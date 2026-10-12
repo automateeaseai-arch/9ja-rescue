@@ -10,12 +10,35 @@ const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
 const loadingText = document.getElementById('loading-text');
 
+// Shows the current start-up step with a running timer, so a stall on a
+// phone can be reported precisely.
+let stepName = '';
+const stepStart = performance.now();
+const stepTimer = setInterval(() => {
+  if (stepName) loadingText.textContent = `${stepName} (${Math.round((performance.now() - stepStart) / 1000)}s)`;
+}, 500);
+function step(name) {
+  stepName = name;
+  loadingText.textContent = name;
+  return new Promise((r) => setTimeout(r, 30)); // let the screen repaint
+}
+function showError(msg) {
+  clearInterval(stepTimer);
+  stepName = '';
+  if (loadingText.isConnected) loadingText.textContent = `Something went wrong during "${loadingText.textContent}": ${msg}`;
+}
+addEventListener('error', (e) => showError(e.message));
+addEventListener('unhandledrejection', (e) => showError(e.reason?.message ?? String(e.reason)));
+
+const isPhone = matchMedia('(pointer: coarse)').matches;
+
 async function start() {
-  loadingText.textContent = 'Starting physics…';
+  await step('Starting physics');
   await RAPIER.init();
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // Phones render at a lower resolution and shadow detail to stay smooth.
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isPhone ? 1.25 : 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -25,11 +48,12 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
   const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
-  const world = buildWorld(scene, physics);
+  await step('Building the savanna');
+  const world = buildWorld(scene, physics, { phone: isPhone });
   const { sun } = world;
   const input = createInput(canvas);
 
-  loadingText.textContent = 'Loading character…';
+  await step('Loading character');
   loadingFill.style.width = '60%';
   // Arrival point: on the dirt road south of the village, facing it.
   const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
@@ -67,6 +91,10 @@ async function start() {
     objective.textContent = `${name} is following you · ${count} of ${total} rescued`;
   });
 
+  await step('Preparing graphics');
+  renderer.compile(scene, camera);
+  clearInterval(stepTimer);
+  stepName = '';
   document.getElementById('loading').remove();
   document.getElementById('hud').hidden = false;
   document.getElementById('help').hidden = false;
@@ -149,5 +177,5 @@ async function start() {
 
 start().catch((err) => {
   console.error(err);
-  loadingText.textContent = `Something went wrong: ${err.message}`;
+  showError(err.message);
 });

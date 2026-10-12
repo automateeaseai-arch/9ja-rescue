@@ -510,7 +510,7 @@ async function addMeshyPieces(scene, physics, rand) {
   });
 }
 
-export function buildWorld(scene, physics) {
+export function buildWorld(scene, physics, { phone = false } = {}) {
   const rand = makeRandom(9);
 
   const sunDir = new THREE.Vector3(-60, 22, -70);
@@ -520,7 +520,7 @@ export function buildWorld(scene, physics) {
   scene.add(new THREE.HemisphereLight('#ffe3b8', '#6e4f33', 1.1));
   const sun = new THREE.DirectionalLight('#ffc77a', 2.8);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.setScalar(phone ? 1024 : 2048);
   const sc = sun.shadow.camera;
   sc.left = sc.bottom = -45;
   sc.right = sc.top = 45;
