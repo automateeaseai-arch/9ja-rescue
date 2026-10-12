@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { buildWorld, groundHeight } from './world.js';
 import { createPlayer, loadCharacters } from './player.js';
 import { createInput } from './input.js';
+import { spawnHostiles } from './hostiles.js';
 
 const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
@@ -28,6 +29,9 @@ async function start() {
 
   loadingText.textContent = 'Loading characters…';
   const characters = await loadCharacters((f) => { loadingFill.style.width = `${Math.round(f * 100)}%`; });
+
+  loadingText.textContent = 'Loading hostiles…';
+  const updateHostiles = await spawnHostiles(scene);
 
   const spawn = new THREE.Vector3(0, groundHeight(0, 12), 12);
   const player = createPlayer(scene, physics, spawn);
@@ -111,6 +115,7 @@ async function start() {
       physics.step();
       acc -= FIXED;
     }
+    updateHostiles(dt, player.position);
     updateCamera(dt);
     renderer.render(scene, camera);
   });

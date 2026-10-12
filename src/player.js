@@ -32,26 +32,31 @@ function makeInPlace(clip) {
   return clip;
 }
 
+const loader = new GLTFLoader();
+
+export async function loadGlb(url) {
+  if (import.meta.env.VITE_MODELS_AS_TEXT) {
+    // The shareable claude.ai build can't host .glb files, so models ship as base64 text.
+    const text = await (await fetch(`${url}.b64.txt`)).text();
+    const bytes = Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+    return loader.parseAsync(bytes.buffer, '');
+  }
+  return loader.loadAsync(url);
+}
+
 export async function loadCharacters(onProgress) {
-  const loader = new GLTFLoader();
   const results = [];
   for (let i = 0; i < CHARACTERS.length; i++) {
-    let gltf;
-    if (import.meta.env.VITE_MODELS_AS_TEXT) {
-      // The shareable claude.ai build can't host .glb files, so models ship as base64 text.
-      const text = await (await fetch(`${CHARACTERS[i].url}.b64.txt`)).text();
-      const bytes = Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
-      gltf = await loader.parseAsync(bytes.buffer, '');
-      onProgress((i + 1) / CHARACTERS.length);
-    } else {
-      gltf = await loader.loadAsync(CHARACTERS[i].url, (e) => {
-        if (e.total) onProgress((i + e.loaded / e.total) / CHARACTERS.length);
-      });
-    }
-    results.push({ ...CHARACTERS[i], gltf });
+    results.push({ ...CHARACTERS[i], gltf: await loadGlb(CHARACTERS[i].url) });
+    onProgress((i + 1) / CHARACTERS.length);
   }
-  onProgress(1);
   return results;
+}
+
+// Holds the first Walk frame as a standing pose until real idle clips exist.
+export function idlePose(gltf) {
+  const walk = gltf.animations.find((c) => c.name === 'Walk');
+  return THREE.AnimationUtils.subclip(walk, 'IdleHold', 0, 1, 30);
 }
 
 export function createPlayer(scene, physics, spawn) {
@@ -86,7 +91,7 @@ export function createPlayer(scene, physics, spawn) {
     const walk = clips.find((c) => c.name === 'Walk');
     const run = clips.find((c) => c.name === 'Run');
     // No idle clip exists yet; hold a single frame of the walk as a stand-in.
-    const idle = THREE.AnimationUtils.subclip(walk, 'IdleHold', 0, 1, 30);
+    const idle = idlePose(entry.gltf);
     actions = {
       idle: mixer.clipAction(idle),
       walk: mixer.clipAction(walk),
