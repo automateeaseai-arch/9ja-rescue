@@ -4,6 +4,7 @@ import { buildWorld, groundHeight } from './world.js';
 import { createPlayer, loadCharacter, CHARACTERS } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
+import { spawnHostages } from './hostages.js';
 
 const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
@@ -58,6 +59,11 @@ async function start() {
 
   // Hostiles stream in after the game starts, one at a time.
   const updateHostiles = spawnHostiles(scene);
+  const objective = document.querySelector('#hud .objective');
+  objective.textContent = 'Hostages are behind you: walk up to one and they follow';
+  const updateHostages = spawnHostages(scene, (name, count, total) => {
+    objective.textContent = `${name} is following you · ${count} of ${total} rescued`;
+  });
 
   document.getElementById('loading').remove();
   document.getElementById('hud').hidden = false;
@@ -126,12 +132,16 @@ async function start() {
       acc -= FIXED;
     }
     updateHostiles(dt, player.position);
+    updateHostages(dt, player);
     updateCamera(dt);
     renderer.render(scene, camera);
   });
 
   // Handy for debugging from the browser console.
-  window.game = { scene, camera, player, physics, renderer };
+  window.game = {
+    scene, camera, player, physics, renderer,
+    look(y, p) { yaw = y; pitch = p; },
+  };
 }
 
 start().catch((err) => {

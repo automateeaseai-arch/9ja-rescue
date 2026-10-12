@@ -21,7 +21,7 @@ const FOOT_OFFSET = CAPSULE_HALF + CAPSULE_RADIUS; // body centre → feet
 
 // Meshy clips may carry forward motion on the hips; the controller moves the
 // character, so keep the animation in place (keep only the hips' height).
-function makeInPlace(clip) {
+export function makeInPlace(clip) {
   for (const track of clip.tracks) {
     if (track.name === 'Hips.position') {
       const v = track.values;
@@ -185,6 +185,7 @@ export function createPlayer(scene, physics, spawn) {
   return {
     root,
     setCharacter,
+    teleport(x, y, z) { body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true); },
     update,
     get position() { return root.position; },
   };
