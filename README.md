@@ -55,6 +55,8 @@ npm run build    # production files in dist/
 
 North and Middle Belt share the North hostiles. Source sheets 017–021 from `9ja_Rescue_Hostiles_North_Refs.zip`; 022 is a group shot of the same five and 023 (Wiry Civilian Scout) was skipped pending role confirmation. South hostiles come from sheets 012–016 in `9ja_Rescue_Hostiles_South_Refs.zip`. Hostages come from `9ja_Rescue_Victims_Refs.zip`, using the later revision where a persona had two sheets (030–039).
 
+All runtime GLBs are compressed for slow phone connections (WebP textures at 1024 px, meshopt geometry and animation; loaded with three.js MeshoptDecoder). Sizes and checksums in the tables are from before compression; the uncompressed originals are in git history.
+
 All models face +Z, have their origin at the feet and use metres. None has an idle clip yet; the game holds the first Walk frame as a stand-in.
 
 ## Environment register (northern savanna)

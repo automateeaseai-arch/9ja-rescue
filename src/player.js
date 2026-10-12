@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 export const CHARACTERS = [
   { name: 'Hunter', url: 'models/Hunter_mobile.glb' },
@@ -32,18 +33,33 @@ export function makeInPlace(clip) {
   return clip;
 }
 
-const loader = new GLTFLoader();
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // models are meshopt-compressed
 
-// Fetch with a time limit and one retry, so a stalled phone download
-// shows an error instead of hanging on the loading screen.
+// Running total of bytes downloaded, shown on the loading screen.
+export const downloadStats = { bytes: 0 };
+
+// Fetch with one retry. A download is only abandoned if no data arrives for
+// 30 s, so slow but steady phone connections are never cut off.
 async function fetchWithRetry(url, as) {
   for (let attempt = 0; ; attempt++) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 90000);
+    let timer = setTimeout(() => ctrl.abort(), 30000);
+    const stillAlive = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), 30000); };
     try {
       const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`${url} returned ${res.status}`);
-      return await res[as]();
+      // Read in chunks so the loading screen can count bytes as they arrive.
+      const reader = res.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        stillAlive();
+        chunks.push(value);
+        downloadStats.bytes += value.length;
+      }
+      const blob = new Blob(chunks);
+      return as === 'text' ? await blob.text() : await blob.arrayBuffer();
     } catch (err) {
       if (attempt >= 1) throw new Error(`Could not download ${url.split('/').pop()} (${err.message})`);
     } finally {

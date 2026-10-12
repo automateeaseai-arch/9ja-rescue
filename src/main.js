@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildWorld, groundHeight, roadX } from './world.js';
-import { createPlayer, loadCharacter, CHARACTERS } from './player.js';
+import { createPlayer, loadCharacter, CHARACTERS, downloadStats } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { spawnHostages } from './hostages.js';
@@ -15,7 +15,7 @@ const loadingText = document.getElementById('loading-text');
 let stepName = '';
 const stepStart = performance.now();
 const stepTimer = setInterval(() => {
-  if (stepName) loadingText.textContent = `${stepName} (${Math.round((performance.now() - stepStart) / 1000)}s)`;
+  if (stepName) loadingText.textContent = `${stepName} (${Math.round((performance.now() - stepStart) / 1000)}s, ${Math.round(downloadStats.bytes / 1024)} KB downloaded)`;
 }, 500);
 function step(name) {
   stepName = name;

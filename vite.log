@@ -1,0 +1,8 @@
+
+  VITE v5.4.11  ready in 240 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.0.2.2:5173/
+9:30:32 PM [vite] ✨ new dependencies optimized: three/addons/libs/meshopt_decoder.module.js
+9:30:32 PM [vite] ✨ optimized dependencies changed. reloading
+9:33:16 PM [vite] page reload src/world.js

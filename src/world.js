@@ -424,7 +424,16 @@ function bakeModel(gltf) {
   gltf.scene.updateMatrixWorld(true);
   let mesh;
   gltf.scene.traverse((o) => { if (o.isMesh && !mesh) mesh = o; });
-  const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+  // Compressed models store positions as small integers; expand them to
+  // floats before baking in the node transform, or the values overflow.
+  const geo = mesh.geometry.clone();
+  for (const [name, a] of Object.entries(geo.attributes)) {
+    if (a.array instanceof Float32Array) continue;
+    const f = new Float32Array(a.count * a.itemSize);
+    for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) f[i * a.itemSize + k] = a.getComponent(i, k);
+    geo.setAttribute(name, new THREE.BufferAttribute(f, a.itemSize));
+  }
+  geo.applyMatrix4(mesh.matrixWorld);
   geo.computeBoundingBox();
   return { geo, mat: mesh.material, box: geo.boundingBox };
 }
