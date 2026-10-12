@@ -1,4 +1,4 @@
-// Northern / Middle Belt hostiles placed in the village for viewing.
+// Northern / Middle Belt (front row) and southern (back row) hostiles placed in the village for viewing.
 // They only stand and turn to face the player for now; AI and combat come later.
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -11,6 +11,11 @@ const HOSTILES = [
   { name: 'Black Scarf', url: 'models/hostiles/Hostile_North_03_BlackScarf.glb' },
   { name: 'Sand Robe', url: 'models/hostiles/Hostile_North_04_SandRobe.glb' },
   { name: 'Brown Shirt', url: 'models/hostiles/Hostile_North_05_BrownShirt.glb' },
+  { name: 'Red Polo', url: 'models/hostiles/Hostile_South_01_RedPolo.glb' },
+  { name: 'Denim Vest', url: 'models/hostiles/Hostile_South_02_DenimVest.glb' },
+  { name: 'Blue Headwrap', url: 'models/hostiles/Hostile_South_03_BlueHeadwrap.glb' },
+  { name: 'Balaclava', url: 'models/hostiles/Hostile_South_04_Balaclava.glb' },
+  { name: 'Navy Polo', url: 'models/hostiles/Hostile_South_05_NavyPolo.glb' },
 ];
 
 export function spawnHostiles(scene) {
@@ -22,8 +27,9 @@ export function spawnHostiles(scene) {
         const gltf = await loadGlb(HOSTILES[i].url);
         const model = cloneSkinned(gltf.scene);
         model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
-        const x = -6 + i * 3;
-        const z = 6;
+        // North/Middle Belt in the front row, South in the row behind.
+        const x = -6 + (i % 5) * 3 + (i < 5 ? 0 : 1.5);
+        const z = i < 5 ? 6 : 2.5;
         model.position.set(x, groundHeight(x, z), z);
         scene.add(model);
         const mixer = new THREE.AnimationMixer(model);
