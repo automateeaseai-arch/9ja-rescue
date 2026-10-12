@@ -56,3 +56,12 @@ npm run build    # production files in dist/
 North and Middle Belt share the North hostiles. Source sheets 017–021 from `9ja_Rescue_Hostiles_North_Refs.zip`; 022 is a group shot of the same five and 023 (Wiry Civilian Scout) was skipped pending role confirmation. South hostiles come from sheets 012–016 in `9ja_Rescue_Hostiles_South_Refs.zip`. Hostages come from `9ja_Rescue_Victims_Refs.zip`, using the later revision where a persona had two sheets (030–039).
 
 All models face +Z, have their origin at the feet and use metres. None has an idle clip yet; the game holds the first Walk frame as a stand-in.
+
+## Environment register (northern savanna)
+| Piece | File | Details | Rig | In game |
+|---|---|---|---|---|
+| Granite boulder | `public/models/env/Boulder_Granite.glb` | 311,236 B (SHA256 `ce5870fd…4413`), 3,136 tris, 1024 px texture. Meshy text-to-3D preview `01a131e2-4c2e-76cd-8022-4a78bce22f03`, refine `01a131e2-f4af-771b-9f34-13675cc2a0e0`, 30 credits | Static, no rig | Copied ~280 times: scattered rocks, roadside rocks, distant kopje hills |
+| Mud-brick house, tin roof | `public/models/env/House_MudBrick_TinRoof.glb` | 521,980 B (SHA256 `77355504…f26c`), 5,310 tris, 1024 px texture. Meshy text-to-3D preview `01a131e2-4cc4-7749-aafd-e68d3ba1d892`, refine `01a131e3-7934-74a9-8af1-89184e29b174`, 30 credits | Static, no rig | 5 copies around the village |
+| Round thatched hut | `public/models/env/Hut_Thatched_Round.glb` | 435,580 B (SHA256 `89c25a6a…e967`), 4,462 tris, 1024 px texture. Meshy text-to-3D preview `01a131e2-4c77-763b-907d-cce66392c078`, refine `01a131e5-7918-7019-852a-2e6206912259`, 30 credits | Static, no rig | 9 copies in the village |
+
+Trees, bushes, grass, dirt road, sky, clouds, dust and wind sway are generated in code (`src/world.js`), so they cost no credits. The enterable house in the village centre is built in code.

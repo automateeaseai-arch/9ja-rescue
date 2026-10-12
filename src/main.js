@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { buildWorld, groundHeight } from './world.js';
+import { buildWorld, groundHeight, roadX } from './world.js';
 import { createPlayer, loadCharacter, CHARACTERS } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
@@ -25,12 +25,14 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
   const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
-  const { sun } = buildWorld(scene, physics);
+  const world = buildWorld(scene, physics);
+  const { sun } = world;
   const input = createInput(canvas);
 
   loadingText.textContent = 'Loading character…';
   loadingFill.style.width = '60%';
-  const spawn = new THREE.Vector3(0, groundHeight(0, 12), 12);
+  // Arrival point: on the dirt road south of the village, facing it.
+  const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
   const player = createPlayer(scene, physics, spawn);
   let charIndex = 0;
   player.setCharacter(await loadCharacter(charIndex));
@@ -60,7 +62,7 @@ async function start() {
   // Hostiles stream in after the game starts, one at a time.
   const updateHostiles = spawnHostiles(scene);
   const objective = document.querySelector('#hud .objective');
-  objective.textContent = 'Hostages are behind you: walk up to one and they follow';
+  objective.textContent = 'Walk up to a hostage and they follow you';
   const updateHostages = spawnHostages(scene, (name, count, total) => {
     objective.textContent = `${name} is following you · ${count} of ${total} rescued`;
   });
@@ -106,7 +108,7 @@ async function start() {
     camera.lookAt(camTarget);
 
     // Keep the sun's shadow area centred on the player.
-    sun.position.set(player.position.x + 40, player.position.y + 60, player.position.z + 25);
+    sun.position.copy(player.position).add(sun.userData.offset);
     sun.target.position.copy(player.position);
   }
 
@@ -131,6 +133,7 @@ async function start() {
       physics.step();
       acc -= FIXED;
     }
+    world.update(dt, player.position);
     updateHostiles(dt, player.position);
     updateHostages(dt, player);
     updateCamera(dt);
