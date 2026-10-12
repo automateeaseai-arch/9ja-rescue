@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildWorld, groundHeight } from './world.js';
-import { createPlayer, loadCharacters } from './player.js';
+import { createPlayer, loadCharacter, CHARACTERS } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 
@@ -27,27 +27,37 @@ async function start() {
   const { sun } = buildWorld(scene, physics);
   const input = createInput(canvas);
 
-  loadingText.textContent = 'Loading characters…';
-  const characters = await loadCharacters((f) => { loadingFill.style.width = `${Math.round(f * 100)}%`; });
-
-  loadingText.textContent = 'Loading hostiles…';
-  const updateHostiles = await spawnHostiles(scene);
-
+  loadingText.textContent = 'Loading character…';
+  loadingFill.style.width = '60%';
   const spawn = new THREE.Vector3(0, groundHeight(0, 12), 12);
   const player = createPlayer(scene, physics, spawn);
   let charIndex = 0;
-  player.setCharacter(characters[charIndex]);
+  player.setCharacter(await loadCharacter(charIndex));
+  loadingFill.style.width = '100%';
 
   const switchBtn = document.getElementById('switch-char');
+  const nextIndex = () => (charIndex + 1) % CHARACTERS.length;
   const updateSwitchLabel = () => {
-    switchBtn.textContent = `${characters[charIndex].name} ⇄ ${characters[(charIndex + 1) % characters.length].name}`;
+    switchBtn.textContent = `${CHARACTERS[charIndex].name} ⇄ ${CHARACTERS[nextIndex()].name}`;
   };
   updateSwitchLabel();
-  switchBtn.addEventListener('click', () => {
-    charIndex = (charIndex + 1) % characters.length;
-    player.setCharacter(characters[charIndex]);
+  switchBtn.addEventListener('click', async () => {
+    if (switchBtn.disabled) return;
+    switchBtn.disabled = true;
+    const target = nextIndex();
+    switchBtn.textContent = `Loading ${CHARACTERS[target].name}…`;
+    try {
+      player.setCharacter(await loadCharacter(target));
+      charIndex = target;
+    } catch (err) {
+      console.error(err);
+    }
+    switchBtn.disabled = false;
     updateSwitchLabel();
   });
+
+  // Hostiles stream in after the game starts, one at a time.
+  const updateHostiles = spawnHostiles(scene);
 
   document.getElementById('loading').remove();
   document.getElementById('hud').hidden = false;

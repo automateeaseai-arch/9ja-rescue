@@ -34,23 +34,48 @@ function makeInPlace(clip) {
 
 const loader = new GLTFLoader();
 
-export async function loadGlb(url) {
-  if (import.meta.env.VITE_MODELS_AS_TEXT) {
-    // The shareable claude.ai build can't host .glb files, so models ship as base64 text.
-    const text = await (await fetch(`${url}.b64.txt`)).text();
-    const bytes = Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
-    return loader.parseAsync(bytes.buffer, '');
+// Fetch with a time limit and one retry, so a stalled phone download
+// shows an error instead of hanging on the loading screen.
+async function fetchWithRetry(url, as) {
+  for (let attempt = 0; ; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+      return await res[as]();
+    } catch (err) {
+      if (attempt >= 1) throw new Error(`Could not download ${url.split('/').pop()} (${err.message})`);
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  return loader.loadAsync(url);
 }
 
-export async function loadCharacters(onProgress) {
-  const results = [];
-  for (let i = 0; i < CHARACTERS.length; i++) {
-    results.push({ ...CHARACTERS[i], gltf: await loadGlb(CHARACTERS[i].url) });
-    onProgress((i + 1) / CHARACTERS.length);
+export async function loadGlb(url) {
+  let buffer;
+  if (import.meta.env.VITE_MODELS_AS_TEXT) {
+    // The shareable claude.ai build can't host .glb files, so models ship as base64 text.
+    const bin = atob(await fetchWithRetry(`${url}.b64.txt`, 'text'));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    buffer = bytes.buffer;
+  } else {
+    buffer = await fetchWithRetry(url, 'arrayBuffer');
   }
-  return results;
+  return loader.parseAsync(buffer, '');
+}
+
+// Characters download only when first needed, keeping start-up small on phones.
+const characterCache = new Map();
+export function loadCharacter(index) {
+  if (!characterCache.has(index)) {
+    const entry = CHARACTERS[index];
+    const p = loadGlb(entry.url).then((gltf) => ({ ...entry, gltf }));
+    p.catch(() => characterCache.delete(index));
+    characterCache.set(index, p);
+  }
+  return characterCache.get(index);
 }
 
 // Holds the first Walk frame as a standing pose until real idle clips exist.

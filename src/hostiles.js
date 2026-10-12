@@ -13,19 +13,27 @@ const HOSTILES = [
   { name: 'Brown Shirt', url: 'models/hostiles/Hostile_North_05_BrownShirt.glb' },
 ];
 
-export async function spawnHostiles(scene) {
-  const gltfs = await Promise.all(HOSTILES.map((h) => loadGlb(h.url)));
-  const units = gltfs.map((gltf, i) => {
-    const model = cloneSkinned(gltf.scene);
-    model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
-    const x = -6 + i * 3;
-    const z = 6;
-    model.position.set(x, groundHeight(x, z), z);
-    scene.add(model);
-    const mixer = new THREE.AnimationMixer(model);
-    mixer.clipAction(idlePose(gltf)).play();
-    return { model, mixer };
-  });
+export function spawnHostiles(scene) {
+  const units = [];
+
+  (async () => {
+    for (let i = 0; i < HOSTILES.length; i++) {
+      try {
+        const gltf = await loadGlb(HOSTILES[i].url);
+        const model = cloneSkinned(gltf.scene);
+        model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
+        const x = -6 + i * 3;
+        const z = 6;
+        model.position.set(x, groundHeight(x, z), z);
+        scene.add(model);
+        const mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(idlePose(gltf)).play();
+        units.push({ model, mixer });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  })();
 
   return function update(dt, playerPos) {
     for (const u of units) {
