@@ -1,0 +1,26 @@
+{
+  "name": "9ja-rescue",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/automateeaseai-arch/9ja-rescue.git"
+  },
+  "bugs": {
+    "url": "https://github.com/automateeaseai-arch/9ja-rescue/issues"
+  },
+  "homepage": "https://github.com/automateeaseai-arch/9ja-rescue#readme",
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  },
+  "private": true,
+  "type": "module"
+}
