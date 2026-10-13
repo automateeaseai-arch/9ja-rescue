@@ -1,5 +1,9 @@
-// Hostiles: North/Middle Belt five in the savanna village, the southern five
-// at the valley compound (guard posts passed in `opts.spots`).
+// Hostiles: exactly ten per mission (game plan v2.2). The mission gives each
+// a place with `configure(roster)`: four roam patrol beats between the arrival
+// and the captive site, six defend the site (one inside the store house).
+// Every hostile has 10 HP; each hit on the player does 20 HP. At most two
+// fire at once, so a group can't drop the player in an instant. Site
+// defenders give up a chase that leads too far from the site.
 //
 // Guards stand at their post looking around. They only notice the player
 // in front of them (a 120° view cone, clear line of sight, within 28 m, or
@@ -19,6 +23,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { loadGlb, makeInPlace } from './player.js';
 import { loadSharedAnims, retarget, upperBody, lowerBody } from './anims.js';
 import { groundHeight } from './world.js';
+import { AI, RULES } from './config.js';
 
 const HOSTILES = [
   { name: 'Olive Jacket', url: 'models/hostiles/Hostile_North_01_OliveJacket.glb' },
@@ -33,16 +38,16 @@ const HOSTILES = [
   { name: 'Navy Polo', url: 'models/hostiles/Hostile_South_05_NavyPolo.glb' },
 ];
 
-export const VIEW_RANGE = 28;              // metres
-export const VIEW_COS = Math.cos(THREE.MathUtils.degToRad(60)); // half-angle of the view cone
-const CROUCH_VIEW = 0.5;                   // crouching halves how far away they notice the player
-const ALERT_RADIUS = 12;                   // a hit alerts every guard this close
-const SHOOT_RANGE = 16;
-const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4; // rounds of 3 bullets, 0.4 s between rounds                    // stop and shoot within this distance
-const WALK = 1.6, RUN = 4.0;               // the player runs at 5, so they can be outrun
+export const VIEW_RANGE = AI.viewRange;    // metres
+export const VIEW_COS = Math.cos(THREE.MathUtils.degToRad(AI.viewHalfAngle)); // half-angle of the view cone
+const CROUCH_VIEW = AI.crouchView;         // crouching halves how far away they notice the player
+const ALERT_RADIUS = AI.alertRadius;       // a hit alerts every guard this close
+const SHOOT_RANGE = AI.shootRange;         // stop and shoot within this distance
+const BURST = AI.burst, BULLET_GAP = AI.bulletGap, BURST_GAP = AI.burstGap; // rounds of 3 bullets, 0.4 s between rounds
+const WALK = AI.walk, RUN = AI.run;        // the player runs at 5, so they can be outrun
 const ACTIVE_RANGE = 140;                  // guards further away are frozen (saves work)
 const HALF = 0.55, RADIUS = 0.3, FOOT = HALF + RADIUS;
-export const MAX_HEALTH = 100;
+export const MAX_HEALTH = RULES.hostileHealth;
 
 function markTexture(ch, color) {
   const c = document.createElement('canvas');
@@ -61,7 +66,8 @@ function markTexture(ch, color) {
   return t;
 }
 
-// opts: spots ([x, z, yaw?] guard posts), heightAt, physics, fx, onShootPlayer(damage, fromPos)
+// opts: heightAt, physics, fx, onShootPlayer(damage, fromPos), onDefeated(unit),
+// site: { x, z } (centre the defenders stay near)
 export function spawnHostiles(scene, opts = {}) {
   const heightAt = opts.heightAt ?? ((x, z) => groundHeight(x, z));
   const { physics, fx } = opts;
@@ -80,8 +86,8 @@ export function spawnHostiles(scene, opts = {}) {
         const model = cloneSkinned(gltf.scene);
         model.rotation.order = 'YXZ'; // so the fall tilts in the model's own frame
         model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
-        let x = -6 + (i % 5) * 3, z = 6, yaw = 0;
-        if (opts.spots) [x, z, yaw = 0] = opts.spots[i];
+        // Out of the way until the mission places them.
+        const x = -6 + i * 3, z = -400, yaw = 0;
         const y = heightAt(x, z);
         model.position.set(x, y, z);
         model.rotation.y = yaw;
@@ -105,26 +111,74 @@ export function spawnHostiles(scene, opts = {}) {
         let hand = null;
         model.traverse((o) => { if (o.name === 'RightHand') hand = o; });
 
-        const body = physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + FOOT + 0.05, z));
-        const collider = physics.createCollider(RAPIER.ColliderDesc.capsule(HALF, RADIUS), body);
         const mark = new THREE.Sprite(new THREE.SpriteMaterial({ map: marks.query, transparent: true, depthWrite: false, fog: false }));
         mark.scale.setScalar(0.55);
         mark.visible = false;
         scene.add(mark);
 
-        units.push({
-          index: i, name: HOSTILES[i].name, model, mixer, a, hand, body, collider, mark,
+        const u = {
+          index: i, name: HOSTILES[i].name, model, mixer, a, hand, body: null, collider: null, mark,
           post: new THREE.Vector3(x, y, z), postYaw: yaw, phase: i * 1.7,
           health: MAX_HEALTH, state: 'guard', awareness: 0, lastSeen: new THREE.Vector3(),
           sinceSeen: 99, seen: false, losTimer: i * 0.02, burst: 0, shotTimer: 1 + i * 0.13,
           speed: 0, aimW: 0, flinch: 0, stagger: 0, fall: 0, fallDir: 1, vy: 0, active: false,
-          stuck: 0, side: 0, lastPos: new THREE.Vector3(x, y, z),
-        });
+          stuck: 0, side: 0, lastPos: new THREE.Vector3(x, y, z), staggerCd: 0,
+          id: null, group: null, patrol: null, beat: 0, wait: 0, shooter: false,
+        };
+        units.push(u);
+        if (roster[i]) place(u, roster[i]);
       } catch (err) {
         console.error(err);
       }
     }
   })();
+
+  // The mission's roster: [{ id, group: 'roam'|'site', post: [x, z, yaw],
+  // patrol: [[x, z], [x, z]] | null, hp?, down?, at?: [x, z] }] by model index.
+  let roster = [];
+  function makeBody(u, x, y, z) {
+    if (u.body) physics.removeRigidBody(u.body);
+    u.body = physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + FOOT + 0.05, z));
+    u.collider = physics.createCollider(RAPIER.ColliderDesc.capsule(HALF, RADIUS), u.body);
+  }
+  function place(u, r) {
+    const [px, pz, yaw = 0] = r.post;
+    const [x, z] = r.at ?? [px, pz];
+    const y = heightAt(x, z);
+    Object.assign(u, {
+      id: r.id, group: r.group, patrol: r.patrol ?? null, beat: 0, wait: 0,
+      post: new THREE.Vector3(px, heightAt(px, pz), pz), postYaw: yaw,
+      health: r.hp ?? MAX_HEALTH, awareness: 0, sinceSeen: 99, seen: false, burst: 0, shotTimer: 1,
+      speed: 0, aimW: 0, flinch: 0, stagger: 0, staggerCd: 0, vy: 0, active: false, stuck: 0, side: 0,
+    });
+    u.model.position.set(x, y, z);
+    u.model.rotation.set(0, yaw, 0);
+    u.model.visible = true;
+    u.mark.visible = false;
+    for (const act of Object.values(u.a)) { act.setEffectiveWeight(0); }
+    u.a.knockDown.stop(); u.a.fallForward.stop();
+    if (r.down) {
+      // Already defeated: lying where they fell.
+      u.state = 'down';
+      u.health = 0;
+      if (u.body) { physics.removeRigidBody(u.body); u.body = null; }
+      const fall = u.a.knockDown;
+      fall.reset().play();
+      fall.setEffectiveWeight(1);
+      fall.time = fall.getClip().duration;
+      u.fall = 3;
+      u.mixer.update(0);
+      return;
+    }
+    u.state = 'guard';
+    u.fall = 0;
+    u.a.idle.setEffectiveWeight(1);
+    makeBody(u, x, y, z);
+  }
+  function configure(list) {
+    roster = list;
+    for (const u of units) if (roster[u.index]) place(u, roster[u.index]);
+  }
 
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
   const v = new THREE.Vector3(), toP = new THREE.Vector3(), muzzle = new THREE.Vector3(), aimAt = new THREE.Vector3();
@@ -159,8 +213,8 @@ export function spawnHostiles(scene, opts = {}) {
   }
 
   function alert(u, playerPos) {
-    if (u.state === 'down') return;
-    if (u.state !== 'alert') u.shotTimer = 0.6; // a moment to raise the rifle
+    if (u.state === 'down' || !u.body) return;
+    if (u.state !== 'alert') u.shotTimer = AI.reaction; // a moment to raise the rifle
     u.state = 'alert';
     u.awareness = 1;
     u.sinceSeen = 0;
@@ -191,8 +245,9 @@ export function spawnHostiles(scene, opts = {}) {
     fall.setEffectiveWeight(1);
     u.mark.visible = false;
     alertNearby(u, playerPos);
-    physics.removeRigidBody(u.body); // the player can step over them
+    if (u.body) physics.removeRigidBody(u.body); // the player can step over them
     u.body = null;
+    opts.onDefeated?.(u);
   }
 
   function face(u, x, z, dt, rate = 8) {
@@ -238,10 +293,14 @@ export function spawnHostiles(scene, opts = {}) {
     muzzle.x += Math.sin(yaw) * 0.5;
     muzzle.z += Math.cos(yaw) * 0.5;
     const d = u.model.position.distanceTo(player.position);
-    // Harder to hit at range and when the player runs.
-    let chance = THREE.MathUtils.clamp(0.26 - d * 0.011, 0.06, 0.26);
-    if (player.speed > 3) chance *= 0.6;
-    const hit = Math.random() < chance;
+    // Harder to hit at range and when the player runs. At most one bullet of
+    // a round can hit (decided when the round starts).
+    if (u.burst === 0) {
+      let chance = THREE.MathUtils.clamp(AI.hitChanceNear - d * AI.hitFalloff, AI.hitChanceFar, AI.hitChanceNear);
+      if (player.speed > 3) chance *= AI.runningFactor;
+      u.hitBullet = Math.random() < chance ? Math.floor(Math.random() * BURST) : -1;
+    }
+    const hit = u.burst === u.hitBullet;
     aimAt.copy(player.position).y += 1.1 + (hit ? 0 : (Math.random() - 0.3) * 1.2);
     if (!hit) {
       aimAt.x += (Math.random() - 0.5) * 2;
@@ -250,14 +309,19 @@ export function spawnHostiles(scene, opts = {}) {
     fx.flash(muzzle);
     fx.tracer(muzzle, aimAt);
     fx.gunshot(d);
-    if (hit) opts.onShootPlayer?.(5, u.model.position);
+    if (hit) opts.onShootPlayer?.(RULES.hostileBulletDamage, u.model.position);
   }
 
   function update(dt, player) {
     const pp = player.position;
     const playerDown = player.state.disabled;
     viewK = player.crouching ? CROUCH_VIEW : 1;
+    // Fair spacing: only the nearest few with a clear shot may fire.
+    const ready = units.filter((u) => u.state === 'alert' && u.seen && u.body).sort((a, b) => a.model.position.distanceToSquared(pp) - b.model.position.distanceToSquared(pp));
+    for (const u of units) u.shooter = false;
+    for (const u of ready.slice(0, AI.maxShooters)) u.shooter = true;
     for (const u of units) {
+      if (!u.body && u.state !== 'down') continue;   // not placed by a mission
       const dist = u.model.position.distanceTo(pp);
       if (u.state === 'down') {
         // Play the fall once, then stay still.
@@ -294,12 +358,13 @@ export function spawnHostiles(scene, opts = {}) {
 
       let speed = 0, shooting = false;
       u.stagger = Math.max(0, u.stagger - dt);
+      u.staggerCd = Math.max(0, u.staggerCd - dt);
       if (u.state === 'alert') {
         if (u.seen && dist < SHOOT_RANGE) {
           shooting = true;
           face(u, pp.x, pp.z, dt, 10);
           moveTowards(u, u.model.position.x, u.model.position.z, 0, dt); // keep gravity and grounding
-          if (u.stagger <= 0) {
+          if (u.stagger <= 0 && u.shooter) {
             u.shotTimer -= dt;
             if (u.shotTimer <= 0) {
               shoot(u, player);
@@ -311,11 +376,26 @@ export function spawnHostiles(scene, opts = {}) {
           speed = u.stagger > 0 ? 0 : RUN;
           const left = moveTowards(u, u.lastSeen.x, u.lastSeen.z, speed, dt);
           if (left < 1.2) speed = 0;
-          if (u.sinceSeen > 8) { u.state = 'return'; u.awareness = 0.4; }
+          if (u.sinceSeen > AI.searchTime) { u.state = 'return'; u.awareness = 0.4; }
+        }
+        // Site defenders don't follow the player across the map.
+        if (u.group === 'site' && opts.site && Math.hypot(u.model.position.x - opts.site.x, u.model.position.z - opts.site.z) > AI.siteLeash) {
+          u.state = 'return'; u.awareness = 0.4;
         }
       } else if (u.state === 'return') {
         speed = WALK;
         if (moveTowards(u, u.post.x, u.post.z, speed, dt) < 0.4) { u.state = 'guard'; speed = 0; }
+      } else if (u.patrol && u.awareness < 0.3) {
+        // Roaming: walk the beat, pausing at each end to look around.
+        const [tx, tz] = u.patrol[u.beat];
+        if (u.wait > 0) {
+          u.wait -= dt;
+          moveTowards(u, u.model.position.x, u.model.position.z, 0, dt);
+          u.model.rotation.y += Math.sin(performance.now() / 700 + u.phase) * dt * 0.8;
+        } else {
+          speed = WALK;
+          if (moveTowards(u, tx, tz, speed, dt) < 0.6) { u.beat = 1 - u.beat; u.wait = 3; speed = 0; }
+        }
       } else {
         // On guard: slowly look left and right around their post's direction.
         moveTowards(u, u.model.position.x, u.model.position.z, 0, dt);
@@ -358,13 +438,15 @@ export function spawnHostiles(scene, opts = {}) {
   return {
     units,
     update,
+    configure,
     // Damage from the player. `kind` is 'shot' or 'punch'.
     hit(u, damage, fromPos, playerPos = fromPos) {
       if (u.state === 'down') return;
       u.health -= damage;
       if (u.health <= 0) { knockOut(u, fromPos, playerPos); return; }
+      // A brief flinch, but not again straight away (no stun lock).
       u.flinch = 1;
-      u.stagger = 0.5;
+      if (u.staggerCd <= 0) { u.stagger = 0.35; u.staggerCd = 1.5; }
       alert(u, playerPos);
       alertNearby(u, playerPos);
     },

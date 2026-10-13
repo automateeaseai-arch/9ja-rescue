@@ -1,31 +1,36 @@
-// The player's side of combat: shooting (hold Fire), punching (a takedown
-// from behind on a guard who hasn't noticed you), health, being hit and
-// being knocked out.
+// The player's side of combat (game plan v2.2 values): shooting (hold Fire)
+// with a 10-round magazine and a 2 s reload, punching (1 HP; a takedown from
+// behind on a guard who hasn't noticed you), health from 100 up to 200 with
+// first-aid kits (no automatic healing), being hit and being knocked out.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { RULES } from './config.js';
 
 // Fire held: rounds of 3 bullets, 0.07 s apart, with 0.4 s between rounds.
 const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4;
-const SHOT_DAMAGE = 25;       // four body hits knock a guard out
-const HEAD_DAMAGE = 100;
-const PUNCH_DAMAGE = 34;
+const SHOT_DAMAGE = RULES.playerBulletDamage;   // five hits defeat a hostile
+const HEAD_DAMAGE = RULES.playerBulletDamage;
+const PUNCH_DAMAGE = RULES.meleeDamage;
 const PUNCH_REACH = 1.7;
 const RANGE = 90;
-const MAX_HEALTH = 100;
-const REGEN_DELAY = 5, REGEN_RATE = 8; // health comes back after a few seconds without being hit
+const MAX_HEALTH = RULES.maxHealth;
 
-// opts: scene, physics, camera, player, hostiles, fx, isTouch, respawnPoint() → Vector3
-export function createCombat({ physics, camera, player, hostiles, fx, isTouch, respawnPoint }) {
+// opts: physics, camera, player, hostiles, fx, isTouch, onDown() (knocked out)
+export function createCombat({ physics, camera, player, hostiles, fx, isTouch, onDown }) {
   const ui = {
     cross: document.getElementById('crosshair'),
     health: document.getElementById('health'),
     fill: document.getElementById('health-fill'),
     hurt: document.getElementById('hurt'),
     prompt: document.getElementById('prompt'),
-    down: document.getElementById('down'),
+    hp: document.getElementById('hp-value'),
+    ammo: document.getElementById('ammo'),
   };
   ui.health.hidden = false;
-  const st = { burstLeft: 0, health: MAX_HEALTH, sinceHit: 99, cooldown: 0, hurt: 0, downT: 0, hitMark: 0, shots: 0, hits: 0, takedowns: 0 };
+  const st = {
+    burstLeft: 0, health: RULES.startHealth, sinceHit: 99, cooldown: 0, hurt: 0, hitMark: 0, shots: 0, hits: 0, takedowns: 0,
+    mag: RULES.magazine, reserve: RULES.startReserve, reload: 0,
+  };
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
   const O = new THREE.Vector3(), D = new THREE.Vector3(), P = new THREE.Vector3(), Q = new THREE.Vector3();
   const muzzle = new THREE.Vector3(), end = new THREE.Vector3();
@@ -36,6 +41,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, r
 
   function fire() {
     st.shots++;
+    st.mag--;
     camera.getWorldPosition(O);
     camera.getWorldDirection(D);
     // Nearest wall, rock or ground along the aim.
@@ -101,39 +107,47 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, r
   }
 
   function hurt(damage) {
-    if (player.state.disabled) return;
+    if (player.state.disabled || st.invulnerable) return;
     st.health = Math.max(0, st.health - damage);
     st.sinceHit = 0;
     st.hurt = 1;
     if (st.health <= 0) {
       player.state.disabled = true;
-      st.downT = 3;
-      ui.down.hidden = false;
       hostiles.reset();
+      onDown?.();
     }
   }
 
+  function startReload() {
+    if (st.reload > 0 || st.mag >= RULES.magazine || st.reserve <= 0) return;
+    st.reload = RULES.reloadTime;
+    st.burstLeft = 0;
+  }
+
   function update(dt, input) {
-    if (st.downT > 0) {
-      st.downT -= dt;
-      if (st.downT <= 0) {
-        const p = respawnPoint();
-        player.teleport(p.x, p.y, p.z);
-        player.state.disabled = false;
-        st.health = MAX_HEALTH;
-        ui.down.hidden = true;
+    st.sinceHit += dt;
+    if (input?.consumeReload?.()) startReload();
+    if (st.reload > 0) {
+      st.reload -= dt;
+      if (st.reload <= 0) {
+        const n = Math.min(RULES.magazine - st.mag, st.reserve);
+        st.mag += n;
+        st.reserve -= n;
+        st.reload = 0;
       }
     }
-    st.sinceHit += dt;
-    if (st.sinceHit > REGEN_DELAY) st.health = Math.min(MAX_HEALTH, st.health + REGEN_RATE * dt);
-
+    const firing = input ? input.state.fire : player.state.aiming;
     st.cooldown -= dt;
-    if (st.burstLeft > 0 && !player.state.aiming) { st.burstLeft = 0; st.cooldown = BURST_GAP; }
-    if (player.state.aiming && player.aimWeight > 0.7 && st.cooldown <= 0) {
-      if (st.burstLeft <= 0) st.burstLeft = BURST;
-      fire();
-      st.burstLeft--;
-      st.cooldown = st.burstLeft > 0 ? BULLET_GAP : BURST_GAP;
+    if (st.burstLeft > 0 && !(firing && player.state.aiming)) { st.burstLeft = 0; st.cooldown = BURST_GAP; }
+    if (firing && player.state.aiming && player.aimWeight > 0.7 && st.cooldown <= 0 && st.reload <= 0) {
+      if (st.mag <= 0) startReload();   // empty: reload automatically
+      else {
+        if (st.burstLeft <= 0) st.burstLeft = BURST;
+        fire();
+        st.burstLeft--;
+        st.cooldown = st.burstLeft > 0 ? BULLET_GAP : BURST_GAP;
+        if (st.mag <= 0) { st.burstLeft = 0; startReload(); }
+      }
     }
     if (player.state.strike) {
       player.state.strike = false;
@@ -145,25 +159,31 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, r
     for (const u of hostiles.units) {
       if (u.state !== 'down' && u.model.position.distanceTo(player.position) < 2.6 && hostiles.canTakeDown(u, player.position)) { near = true; break; }
     }
-    ui.prompt.hidden = !near || player.state.disabled;
-    if (near) ui.prompt.textContent = isTouch ? 'Punch: takedown' : 'E: takedown';
+    // On phones the Interact button offers the takedown instead.
+    st.takedownNear = near && !player.state.disabled;
+    ui.prompt.hidden = !near || player.state.disabled || isTouch;
+    if (near && !isTouch) ui.prompt.textContent = 'E: takedown';
 
     ui.cross.hidden = !player.state.aiming;
     st.hitMark -= dt;
     ui.cross.classList.toggle('hit', st.hitMark > 0);
     st.hurt = Math.max(0, st.hurt - dt * 2.5);
     ui.hurt.style.opacity = Math.max(st.hurt * 0.8, st.health < 35 ? 0.35 : 0).toFixed(2);
-    ui.fill.style.width = `${st.health}%`;
-    ui.fill.style.background = st.health < 35 ? '#e0533a' : '#6fcf5a';
+    // The bar covers 0-200; the first half is the normal 100.
+    ui.fill.style.width = `${(st.health / MAX_HEALTH) * 100}%`;
+    ui.fill.style.background = st.health < 35 ? '#e0533a' : st.health > 100 ? '#4fd08a' : '#6fcf5a';
+    if (ui.hp) ui.hp.textContent = Math.ceil(st.health);
+    if (ui.ammo) ui.ammo.textContent = st.reload > 0 ? 'Reloading…' : `${st.mag} / ${st.reserve}`;
     fx.update(dt);
   }
 
-  // First-aid: returns false (kit not used) when health is already full.
+  // First-aid: +10 HP, also above 100 (to 200). Returns false only at 200.
   function heal(amount) {
-    if (player.state.disabled || st.health >= MAX_HEALTH - 0.5) return false;
+    if (player.state.disabled || st.health >= MAX_HEALTH) return false;
     st.health = Math.min(MAX_HEALTH, st.health + amount);
     return true;
   }
+  function addAmmo(n) { st.reserve += n; return true; }
 
-  return { update, hurt, heal, stats: st };
+  return { update, hurt, heal, addAmmo, startReload, stats: st };
 }

@@ -55,6 +55,7 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
       place(v);
       scene.add(model);
       list.push(v);
+      if (kind in staged) stage(kind, staged[kind]);
     }).catch((err) => console.error(err));
   }
 
@@ -69,6 +70,25 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
     // The model's front is along its local -X: turn it to face the heading.
     model.quaternion.copy(q).multiply(qy.setFromAxisAngle(Y, Math.PI / 2));
     model.position.copy(v.pos).addScaledVector(Y.clone().applyQuaternion(q), -half.h - 0.04);
+  }
+
+  // Owned vehicles are parked near the mission's arrival; others are put away.
+  const staged = {};
+  function stage(kind, spot) {
+    staged[kind] = spot;
+    const v = list.find((o) => o.kind === kind);
+    if (!v) return;
+    if (st.driving === v) exit(v);
+    v.away = !spot;
+    v.model.visible = !!spot;
+    v.collider.setEnabled(!!spot);
+    if (!spot) return;
+    const [x, z, heading] = spot;
+    v.heading = heading;
+    v.speed = v.vy = v.pitch = v.roll = 0;
+    v.pos.set(x, heightAt(x, z) + v.half.h + 0.08, z);
+    v.body.setTranslation(v.pos, true);
+    place(v);
   }
 
   const st = { driving: null, near: null };
@@ -184,6 +204,7 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
       if (!st.driving && !player.state.disabled && player.state.mode === 'ground') {
         let best = ENTER_RANGE;
         for (const v of list) {
+          if (v.away) continue;
           const d = Math.hypot(pp.x - v.pos.x, pp.z - v.pos.z) - v.half.len * 0.5;
           if (d < best) { best = d; st.near = v; }
         }
@@ -194,6 +215,7 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
       }
       if (st.driving && player.state.disabled) exit(st.driving);
       for (const v of list) {
+        if (v.away) continue;
         if (v === st.driving) drive(v, dt, input.state);
         else v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 8 * dt);
         fwd.set(Math.sin(v.heading), 0, Math.cos(v.heading));
@@ -203,6 +225,8 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
       }
       if (st.driving) seatPlayer(st.driving);
     },
+    stage,
+    leave() { if (st.driving) exit(st.driving); },
     get driving() { return st.driving; },
     get near() { return st.near; },
     list,

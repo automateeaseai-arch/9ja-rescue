@@ -1,6 +1,6 @@
 // Grenades: thrown in an arc where the camera looks, they explode the moment
 // they touch the ground, a wall or a guard. The blast knocks out or hurts
-// guards nearby (less behind cover), alerts guards within 20 m, can hurt the
+// guards nearby (4 HP each, less behind cover), alerts guards within 20 m, can hurt the
 // player too, shakes the camera, and leaves damage behind: a scorched crater
 // mark on the ground or wall and scattered rubble.
 // The grenade is the Meshy model from the owner's picture (yellow and black),
@@ -8,13 +8,13 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
+import { RULES } from './config.js';
 
 const SPEED = 15;          // m/s out of the hand
 const LOFT = 0.32;         // extra upward angle (radians) above where the camera looks
 const GRAVITY = -14;
 const COOLDOWN = 1.5;      // seconds between throws
 const RADIUS = 7;          // blast reach
-const KO_RADIUS = 2.5;     // guards this close are always knocked out
 const ALERT_RADIUS = 20;   // guards this close hear it
 const MAX_MARKS = 16, MAX_RUBBLE = 240;
 
@@ -130,7 +130,7 @@ export function createGrenades({ scene, physics, camera, player, hostiles, fx, w
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3();
 
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
-  const st = { cooldown: 0, shake: 0, thrown: 0, explosions: 0 };
+  const st = { cooldown: 0, shake: 0, thrown: 0, explosions: 0, count: 0 };
   const v = new THREE.Vector3(), d = new THREE.Vector3(), P = new THREE.Vector3(), N = new THREE.Vector3(), Q = new THREE.Vector3();
   const up = new THREE.Vector3(0, 0, 1);
 
@@ -199,15 +199,15 @@ export function createGrenades({ scene, physics, camera, player, hostiles, fx, w
       P.copy(u.model.position).y += 1.0;
       const dd = P.distanceTo(center);
       if (dd < RADIUS) {
-        const cover = hostiles.clearLine(center, P) ? 1 : 0.3;
-        const dmg = dd < KO_RADIUS && cover === 1 ? 999 : 130 * (1 - dd / RADIUS) * cover;
-        hostiles.hit(u, dmg, at, player.position);
+        // Game plan: 4 HP to each hostile in the blast (half behind cover).
+        const cover = hostiles.clearLine(center, P) ? 1 : 0.5;
+        hostiles.hit(u, RULES.grenadeDamage * cover, at, player.position);
       } else if (dd < ALERT_RADIUS) hostiles.alertTo(u, player.position);
     }
     // The player isn't safe either.
     P.copy(player.position).y += 1.0;
     const pd = P.distanceTo(center);
-    if (pd < RADIUS) hurtPlayer(80 * (1 - pd / RADIUS) * (hostiles.clearLine(center, P) ? 1 : 0.3));
+    if (pd < RADIUS) hurtPlayer(40 * (1 - pd / RADIUS) * (hostiles.clearLine(center, P) ? 1 : 0.3));
   }
 
   function throwOne() {
@@ -319,8 +319,11 @@ export function createGrenades({ scene, physics, camera, player, hostiles, fx, w
     update,
     stats: st,
     // Starts a throw if one is ready (the throw itself happens at the release moment).
-    get ready() { return st.cooldown <= 0; },
-    begin() { st.cooldown = COOLDOWN; },
+    get ready() { return st.cooldown <= 0 && st.count > 0; },
+    begin() { st.cooldown = COOLDOWN; st.count--; },
+    // Grenades carried this mission (from the loadout, at most 3).
+    set count(n) { st.count = n; },
+    get count() { return st.count; },
     get shake() { return st.shake; },
   };
 }

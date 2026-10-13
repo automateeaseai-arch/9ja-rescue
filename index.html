@@ -17,34 +17,68 @@
     </div>
 
     <div id="hud" hidden>
-      <div class="objective">Prototype: explore the savanna village</div>
-      <div class="buttons">
-        <button id="switch-char" type="button">Switch character</button>
-        <div class="tests">
-          <button id="drop-chute" type="button">Test: parachute</button>
-          <button id="drop-glider" type="button">Test: glider</button>
-        </div>
+      <div class="status">
+        <div class="hp-row"><span class="hp-label">HP</span> <b id="hp-value">100</b>
+          <div id="health" hidden><div id="health-fill"></div><div class="hundred"></div></div></div>
+        <div id="counts">Hostiles 10/10 · Site 6/6</div>
+        <div id="objective">Loading the mission…</div>
+        <div id="save-warn" hidden>Saving failed on this device: progress may not be kept</div>
       </div>
+      <button id="pause-btn" type="button" aria-label="Pause">II</button>
     </div>
 
     <div id="help" hidden>
-      <span class="desktop-only">WASD move · Shift run · Space jump / climb · F or right mouse shoot · E punch · C crouch · G grenade · V drive · drag to look</span>
-      <span class="touch-only">Left thumb: move · Right side: look · Punch from behind: takedown · Jump at a wall: climb</span>
+      <span class="desktop-only">WASD move · Shift run · Space jump / climb · F or right mouse fire · Q aim · R reload · E punch · C crouch · G grenade · 1 gun · 2 unarmed · V interact · Esc pause</span>
     </div>
 
+    <div id="waypoint" hidden><div id="way-arrow">◆</div><div id="way-dist"></div></div>
+    <div id="tip" hidden></div>
+
     <div id="joystick" hidden><div id="joystick-knob"></div></div>
-    <button id="jump-btn" type="button" hidden>Jump</button>
-    <button id="fire-btn" type="button" hidden>Fire</button>
+    <button id="fire-btn" class="touch-ctrl" type="button" hidden>Fire</button>
+    <button id="aim-btn" class="touch-ctrl" type="button" hidden>Aim</button>
+    <button id="jump-btn" class="touch-ctrl" type="button" hidden>Jump</button>
+    <button id="crouch-btn" class="touch-ctrl" type="button" hidden>Crouch</button>
+    <button id="reload-btn" class="touch-ctrl" type="button" hidden>Reload</button>
+    <button id="throw-btn" class="touch-ctrl" type="button" hidden>Grenade</button>
     <button id="punch-btn" type="button" hidden>Punch</button>
-    <button id="crouch-btn" type="button" hidden>Crouch</button>
-    <button id="throw-btn" type="button" hidden>Grenade</button>
-    <button id="drive-btn" type="button" hidden>Drive</button>
+    <div id="ammo">10 / 50</div>
+    <button id="interact-btn" type="button" hidden>Interact</button>
+    <div id="weapons"><button id="weapon-gun" type="button" class="on">Gun</button><button id="weapon-unarmed" type="button">Unarmed</button></div>
 
     <div id="crosshair" hidden></div>
-    <div id="health" hidden><div id="health-fill"></div></div>
     <div id="hurt"></div>
     <div id="prompt" hidden></div>
-    <div id="down" hidden>You were knocked out…</div>
+
+    <div id="down" class="panel-screen" hidden>
+      <div class="panel">
+        <div class="big">You were knocked out</div>
+        <button id="down-checkpoint" type="button">Restart from checkpoint</button>
+        <button id="down-retry" type="button">Retry mission</button>
+      </div>
+    </div>
+    <div id="results" class="panel-screen" hidden>
+      <div class="panel"><div id="results-body"></div>
+        <button id="results-again" type="button">Play again</button></div>
+    </div>
+    <div id="pause" class="panel-screen" hidden>
+      <div class="panel">
+        <div class="big">Paused</div>
+        <button id="pause-resume" type="button">Resume</button>
+        <button id="pause-checkpoint" type="button">Restart from checkpoint</button>
+        <button id="pause-retry" type="button">Retry mission</button>
+        <button id="pause-new" type="button">New mission</button>
+        <div class="small" id="pause-info"></div>
+        <details>
+          <summary>Test tools (until the menus arrive)</summary>
+          <div class="small">Next mission entry:</div>
+          <div class="row"><button data-entry="ground" type="button">Ground</button><button data-entry="parachute" type="button">Parachute</button><button data-entry="glider" type="button">Glider</button></div>
+          <div class="row"><button id="test-chute" type="button">+1 parachute</button><button id="test-glider" type="button">+1 glider</button><button id="test-grenades" type="button">+3 grenades</button></div>
+          <div class="row"><button id="test-truck" type="button">Own pickup</button><button id="test-bike" type="button">Own motorbike</button><button id="test-char" type="button">Switch character</button></div>
+          <div class="small">Equipment and entry take effect on the next new mission.</div>
+        </details>
+      </div>
+    </div>
 
     <div id="rotate">
       <div>Rotate your phone to continue</div>

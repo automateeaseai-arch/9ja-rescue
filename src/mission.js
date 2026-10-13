@@ -1,0 +1,559 @@
+// Mission flow from the 9ja Rescue Game Plan and User Flow v2.2.
+//
+// One mission at a time, generated from a saved seed: a validated random
+// arrival, four roaming hostiles on patrol beats and eight health kits
+// chosen along the way to the captive site, six fixed ammo packs, six site
+// defenders and two kits inside the walled plantation compound, and one or
+// two captives (alternating per new mission). Stages:
+//   ARRIVAL → EXPLORE → CLEAR_SITE → RESCUE → ESCORT → DSS_BOARDING →
+//   DSS_DEPARTURE → COMPLETED
+// Captives can be freed only when all six site defenders are down; the DSS
+// handover needs all ten hostiles down and every captive present. The van
+// leaves and, at its endpoint, the reward (5,000 RP per captive and
+// 2 Mission Points) is paid once per mission ID.
+//
+// Silent checkpoints (save.js) after pickups, defeats, discoveries, freeing,
+// DSS arrival and completion, plus every 20 s when it is safe. Knocked out:
+// restart from the checkpoint or retry the mission. Pause: resume, restart,
+// retry, new mission, and test tools that stand in for the 2D menus (entry
+// choice, equipment, character) until those arrive.
+import * as THREE from 'three';
+import { RULES, SITE, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
+import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed } from './save.js';
+import { PERSONAS } from './hostages.js';
+
+const VERSION = 1;
+const STAGE_TEXT_SITE = 'the captive site (the walled plantation compound in the River Valley)';
+
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function segDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+  const t = THREE.MathUtils.clamp(((px - ax) * dx + (pz - az) * dz) / l2, 0, 1);
+  return Math.hypot(px - ax - dx * t, pz - az - dz * t);
+}
+
+// ctx: { scene, camera, player, combat, hostiles, captives, pickups, grenades,
+//   vehicles, airdrop, getDss(), valleyReady (promise), land, roadX, surfaceAt,
+//   waterAt, origin, input, isTouch, look(yaw, pitch), characters }
+export function createMission(ctx) {
+  const { player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input } = ctx;
+  const W = ([x, z]) => [x + ctx.origin.x, z + ctx.origin.z];
+  const named = (name) => {
+    const m = /^(road|esc)(\d+)([a-z]?)$/.exec(name);
+    const z = +m[2];
+    const x = (m[1] === 'road' ? ctx.roadX(z) : ctx.land.roadXAt(z)) + (m[3] === 'k' ? 4 : m[3] === 'a' ? -4 : 0);
+    return [x, z];
+  };
+  const spot = (s) => (s.valley ? W(s.valley) : typeof s.at === 'string' ? named(s.at) : s.at);
+  const beatPt = (b, p) => (b.valley ? W(p) : typeof p === 'string' ? named(p) : p);
+  const siteC = W(SITE.centre);
+  const site = { x: siteC[0], z: siteC[1], r: SITE.radius };
+  const entrances = SITE.entrances.map(W);
+  const dssPos = () => ctx.getDss()?.pos ?? new THREE.Vector3(-50, 0, 40);
+
+  // ---------------------------------------------------------------- setup
+  function generate(seed, captiveCount, entry) {
+    const r = rng(seed);
+    const dss = dssPos();
+    const far = (p, x, z, d) => Math.hypot(p[0] - x, p[1] - z) >= d;
+    // Arrival: shuffled candidates, the first valid one (fallback: the first).
+    const order = ARRIVALS.map((a, i) => [r(), i]).sort((a, b) => a[0] - b[0]).map((a) => a[1]);
+    let arrival = null;
+    for (const i of order) {
+      const a = ARRIVALS[i], p = spot(a);
+      if (!far(p, site.x, site.z, 140) || !far(p, dss.x, dss.z, 70)) continue;
+      if (ctx.waterAt(p[0], p[1])) continue;
+      arrival = { x: p[0], z: p[1], yaw: a.yaw, index: i };
+      break;
+    }
+    if (!arrival) { const p = spot(ARRIVALS[0]); arrival = { x: p[0], z: p[1], yaw: ARRIVALS[0].yaw, index: 0 }; }
+    // The way in: from the arrival to the nearest site entrance.
+    const gate = entrances.reduce((b, e) => (Math.hypot(e[0] - arrival.x, e[1] - arrival.z) < Math.hypot(b[0] - arrival.x, b[1] - arrival.z) ? e : b));
+    const corridor = (p) => segDist(p[0], p[1], arrival.x, arrival.z, gate[0], gate[1]);
+    const pick = (pool, n, score, ok, spacing) => {
+      const ranked = pool.map((p) => ({ p, s: score(p) + r() * 60 })).filter((o) => ok(o.p)).sort((a, b) => a.s - b.s);
+      const out = [];
+      for (let sp = spacing; out.length < n && sp >= 0; sp -= 15) {
+        for (const o of ranked) {
+          if (out.length >= n) break;
+          if (out.includes(o.p)) continue;
+          if (out.every((q) => Math.hypot(q.pos[0] - o.p.pos[0], q.pos[1] - o.p.pos[1]) >= sp)) out.push(o.p);
+        }
+      }
+      return out;
+    };
+    // Four roaming hostiles: beats near the way in, clear of the arrival.
+    const beats = ROAM_BEATS.map((b) => ({ b, pos: beatPt(b, b.a), pos2: beatPt(b, b.b) }));
+    const roam = pick(beats, 4, (o) => corridor(o.pos),
+      (o) => far(o.pos, arrival.x, arrival.z, 60) && far(o.pos2, arrival.x, arrival.z, 50) && far(o.pos, site.x, site.z, 60) && far(o.pos, dss.x, dss.z, 50), 45);
+    while (roam.length < 4) roam.push(beats[roam.length]);   // never fewer than four
+    // Eight health kits outside the site, two inside.
+    const pool = KIT_POOL.map((k) => ({ k, pos: spot(k) }));
+    const kits = pick(pool, 8, (o) => corridor(o.pos) * 0.8,
+      (o) => far(o.pos, arrival.x, arrival.z, 12) && far(o.pos, site.x, site.z, 55), 30);
+    const kitList = kits.map((o, i) => ({
+      id: `kit-${i + 1}`, kind: 'health', x: o.pos[0], z: o.pos[1],
+      yHint: o.k.deck ? ctx.land.height(o.pos[0], o.pos[1]) + 3 : o.k.cave ? 7.6 : undefined,
+    }));
+    SITE.insideKits.forEach(([x, z], i) => { const [wx, wz] = W([x, z]); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz, yHint: 3 }); });
+    const ammo = AMMO_SPOTS.map((a, i) => { const [x, z] = spot(a); return { id: `ammo-${i + 1}`, kind: 'ammo', x, z }; });
+    // Roster by model index: 0-3 roam, 4-9 defend the site.
+    const roster = [
+      ...roam.map((o, i) => ({ id: `roam-${i + 1}`, group: 'roam', post: [...o.pos, 0], patrol: [o.pos, o.pos2] })),
+      ...SITE.defenders.map(([x, z, yaw], i) => ({ id: `site-${i + 1}`, group: 'site', post: [...W([x, z]), yaw] })),
+    ];
+    // Captives: distinct personas.
+    const personas = PERSONAS.map((p, i) => [r(), i]).sort((a, b) => a[0] - b[0]).slice(0, captiveCount).map((a) => a[1]);
+    const caps = personas.map((persona, i) => {
+      const [x, z, yaw] = SITE.captiveSpots[i];
+      const [wx, wz] = W([x, z]);
+      return { id: `captive-${i + 1}`, persona, x: wx, z: wz, yaw };
+    });
+    return { id: `m-${seed.toString(36)}`, version: VERSION, seed, entry, arrival, roster, kits: kitList, ammo, captives: caps };
+  }
+
+  function initialState(setup) {
+    return {
+      rev: 0, stage: 'ARRIVAL', reachedSite: false, atDss: false,
+      player: { x: setup.arrival.x, z: setup.arrival.z, yaw: setup.arrival.yaw },
+      hp: RULES.startHealth, mag: RULES.magazine, reserve: RULES.startReserve, grenades: setup.grenades ?? 0,
+      pickups: [], hostiles: {}, captives: {},
+    };
+  }
+
+  // ---------------------------------------------------------------- state
+  let account = loadAccount();
+  let setup = null;         // the mission's fixed setup
+  let cp = null;            // latest checkpoint
+  let stage = 'ARRIVAL';
+  let reachedSite = false, atDss = false;
+  let collected = new Set();
+  let paused = false, down = false, finished = false, ready = false;
+  let saveTimer = 0, flash = 0;
+  // Game-time timers (they stop while paused, unlike setTimeout).
+  let timers = [];
+  const later = (secs, fn) => timers.push({ t: secs, fn });
+  const ui = buildUi();
+
+  function snapshot() {
+    const p = player.position;
+    const hs = {};
+    for (const u of hostiles.units) {
+      if (!u.id) continue;
+      hs[u.id] = { hp: u.health, down: u.state === 'down', at: [u.model.position.x, u.model.position.z] };
+    }
+    const cs = {};
+    for (const c of captives.units) cs[c.id] = c.state === 'boarding' ? 'following' : c.state;
+    return {
+      rev: (cp?.rev ?? 0) + 1, stage: ['DSS_BOARDING', 'DSS_DEPARTURE'].includes(stage) ? 'ESCORT' : stage, reachedSite, atDss,
+      player: { x: p.x, y: p.y, z: p.z, yaw: player.facing },
+      hp: combat.stats.health, mag: combat.stats.mag, reserve: combat.stats.reserve, grenades: grenades.count,
+      pickups: [...collected], hostiles: hs, captives: cs,
+    };
+  }
+
+  // A checkpoint only when the player is somewhere playable.
+  function checkpoint() {
+    if (!setup || down || finished || paused || stage === 'ARRIVAL') return;
+    if (player.state.disabled || player.state.mode === 'drive' || player.state.mode === 'climb') return;
+    cp = snapshot();
+    saveMission({ setup, cp });
+    saveTimer = 0;
+  }
+
+  // Puts everything as `state` describes (new mission, retry or checkpoint).
+  async function apply(state, { fly = false } = {}) {
+    ready = false;
+    timers = [];
+    down = false;
+    finished = false;
+    ui.down.hidden = ui.results.hidden = true;
+    airdrop.cancel();
+    vehicles.leave();
+    if (player.state.mode === 'drive') player.leaveRide(player.position.x, player.position.y, player.position.z);
+    await ctx.valleyReady;
+    stage = state.stage;
+    reachedSite = state.reachedSite;
+    atDss = state.atDss;
+    collected = new Set(state.pickups);
+    // Player.
+    const pp = state.player;
+    const y = pp.y ?? ctx.surfaceAt(pp.x, pp.z);
+    player.teleport(pp.x, y, pp.z);
+    player.setFacing(pp.yaw);
+    ctx.look(pp.yaw + Math.PI, 0.25);
+    player.state.disabled = false;
+    Object.assign(combat.stats, { health: state.hp, mag: state.mag, reserve: state.reserve, reload: 0, burstLeft: 0, hurt: 0 });
+    grenades.count = state.grenades;
+    // Hostiles, pickups, captives, DSS van, vehicles.
+    hostiles.configure(setup.roster.map((r) => {
+      const h = state.hostiles[r.id];
+      return h ? { ...r, hp: h.hp, down: h.down, at: h.at } : r;
+    }));
+    await pickups.configure([...setup.kits, ...setup.ammo], collected);
+    await captives.configure(setup.captives.map((c) => ({ ...c, state: state.captives[c.id] ?? 'bound' })), player.position);
+    ctx.getDss()?.reset();
+    const a = setup.arrival;
+    const side = (k) => [a.x + Math.cos(a.yaw) * k, a.z - Math.sin(a.yaw) * k, a.yaw];
+    vehicles.stage('truck', account.inventory.truck ? side(5) : null);
+    vehicles.stage('bike', account.inventory.bike ? side(-4) : null);
+    ready = true;
+    // Air entry: start in the cargo plane over the arrival area.
+    if (fly && setup.entry !== 'ground') {
+      airdrop.start(setup.entry, { x: a.x, z: a.z }, a.yaw + Math.PI, { x: site.x, z: site.z, r: site.r + 10 });
+    } else if (stage === 'ARRIVAL') arrive();
+  }
+
+  function arrive() {
+    stage = 'EXPLORE';
+    showTip('Collect health supplies to improve your chances before reaching the captive site.', 7);
+    if (!account.tutorialDone) {
+      later(7.5, () => showTip(ctx.isTouch
+        ? 'Left thumb: move (push further to run) · Right side: look · Fire, Aim, Jump, Crouch on the right · Interact appears when something is near'
+        : 'WASD move · Shift run · F / right mouse fire · Q aim · R reload · E punch · 1 gun · 2 unarmed · V interact · Esc pause', 9));
+      account.tutorialDone = true;
+      saveAccount(account);
+    }
+    checkpoint();
+  }
+
+  // New mission: a fresh seed, the next captive count, the chosen entry.
+  function newMission() {
+    clearMission();
+    const count = account.captiveAlternation % 2 === 0 ? 1 : 2;
+    account.captiveAlternation++;
+    let entry = account.nextEntry;
+    if (entry !== 'ground' && !(account.inventory[entry] > 0)) entry = 'ground';
+    // Equipment is committed with the mission: grenades (up to 3) and one
+    // parachute or glider (deducted at the launch, which is now).
+    const g = Math.min(RULES.maxGrenades, account.inventory.grenade);
+    account.inventory.grenade -= g;
+    if (entry !== 'ground') account.inventory[entry]--;
+    saveAccount(account);
+    const seed = (Math.random() * 2 ** 31) >>> 0;
+    setup = generate(seed, count, entry);
+    setup.grenades = g;
+    setup.launched = entry !== 'ground';
+    cp = initialState(setup);
+    saveMission({ setup, cp });
+    return apply(cp, { fly: true });
+  }
+  // Same mission from its start (no new seed, no new deduction).
+  function retry() {
+    cp = initialState(setup);
+    saveMission({ setup, cp });
+    return apply(cp, { fly: true });
+  }
+  function restartCheckpoint() {
+    if (!cp || cp.stage === 'ARRIVAL') return retry();
+    return apply(cp);
+  }
+
+  async function begin() {
+    const saved = loadMission();
+    if (saved?.setup?.version === VERSION && !saved.completed) {
+      setup = saved.setup;
+      cp = saved.cp ?? initialState(setup);
+      // Continue: same seed, character, place and progress; no briefing replay.
+      return apply(cp, { fly: cp.stage === 'ARRIVAL' });
+    }
+    return newMission();
+  }
+
+  // ---------------------------------------------------------------- play
+  const siteUnits = () => hostiles.units.filter((u) => u.group === 'site');
+  const roamUnits = () => hostiles.units.filter((u) => u.group === 'roam');
+  const left = (list) => list.filter((u) => u.state !== 'down').length;
+
+  function onDefeated() { if (ready) later(0, checkpoint); }
+  function onCollect(item) { collected.add(item.id); checkpoint(); }
+  function onDiscover(c) { showTip(`You found ${c.name}.`, 4); checkpoint(); }
+  function onDown() {
+    down = true;
+    ui.down.hidden = false;
+  }
+
+  // The DSS handover: every captive walks to the van and climbs in, then it leaves.
+  function handover(list) {
+    stage = 'DSS_BOARDING';
+    const dss = ctx.getDss();
+    let boarded = 0;
+    list.forEach((c, i) => {
+      later(i * 0.7, () => captives.sendTo(c, dss.rearDoor(), (h) => {
+        h.model.visible = false;
+        h.state = 'boarded';
+        boarded++;
+        if (boarded === list.length) {
+          stage = 'DSS_DEPARTURE';
+          later(1.2, () => dss.depart(() => complete(list)));
+        }
+      }), i * 700);
+    });
+  }
+
+  function complete(list) {
+    for (const c of list) c.state = 'departed';
+    stage = 'COMPLETED';
+    finished = true;
+    const rp = list.length * RULES.rpPerCaptive;
+    const first = !account.completed.includes(setup.id);
+    if (first) {
+      // Paid once per mission ID, together with the completion record.
+      account.completed.push(setup.id);
+      account.rp += rp;
+      account.missionPoints += RULES.missionPoints;
+      account.missionsCompleted++;
+      account.captivesRescued += list.length;
+      saveAccount(account);
+    }
+    saveMission({ setup, cp: snapshot(), completed: true });
+    ui.results.hidden = false;
+    ui.resultsBody.innerHTML = `
+      <div class="big">Mission complete</div>
+      <div>Captives rescued: <b>${list.length}</b> (${list.map((c) => c.name).join(', ')})</div>
+      <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
+      <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
+  }
+
+  // What Interact does right now: { label, enabled, run }.
+  function interaction() {
+    const pp = player.position;
+    if (vehicles.driving) return { label: 'Get out', enabled: true, run: () => { driveRequest = true; } };
+    for (const c of captives.units) {
+      if (!['bound', 'discovered'].includes(c.state) || c.model.position.distanceTo(pp) > 2.6) continue;
+      const n = left(siteUnits());
+      if (n > 0) return { label: `Clear the captive site first (${n} left)`, enabled: false };
+      return {
+        label: `Free ${c.name}`, enabled: true,
+        run: () => {
+          captives.free(c);
+          showTip(`${c.name} is free and following you.`, 3);
+          checkpoint();
+        },
+      };
+    }
+    if (stage === 'ESCORT' && atDss) {
+      return { label: 'DSS handover', enabled: true, run: tryHandover };
+    }
+    if (vehicles.near) return { label: vehicles.near.kind === 'bike' ? 'Ride the motorbike' : 'Drive the pickup', enabled: true, run: () => { driveRequest = true; } };
+    if (ctx.isTouch && combat.stats.takedownNear) return { label: 'Takedown', enabled: true, run: () => { input.state.punch = true; } };
+    return null;
+  }
+
+  function tryHandover() {
+    const dss = ctx.getDss();
+    const n = left(hostiles.units);
+    if (n > 0) { showTip(`DSS will not take over while hostiles remain: ${n} left. The marker shows the nearest.`, 5); return; }
+    const want = captives.units.filter((c) => c.state === 'following');
+    const present = want.filter((c) => c.model.position.distanceTo(dss.pos) < DSS_AREA.radius + 8);
+    if (present.length < setup.captives.length) { showTip(`Captives at DSS: ${present.length} of ${setup.captives.length}. Bring everyone.`, 5); return; }
+    handover(present);
+  }
+
+  let driveRequest = false;
+  function takeDriveRequest() { const d = driveRequest; driveRequest = false; return d; }
+
+  // Objective text and the one active waypoint.
+  function objective() {
+    const pp = player.position;
+    const kitsLeft = setup.kits.filter((k) => k.id.startsWith('kit-') && !k.id.startsWith('kit-in') && !collected.has(k.id));
+    const got = 8 - kitsLeft.length;
+    const nearest = (list, f) => list.reduce((b, o) => { const d = f(o).distanceTo(pp); return !b || d < b.d ? { o, d } : b; }, null)?.o;
+    const v3 = (x, z, y) => new THREE.Vector3(x, y ?? ctx.surfaceAt(x, z), z);
+    const entrance = () => { const e = entrances.reduce((b, q) => (Math.hypot(q[0] - pp.x, q[1] - pp.z) < Math.hypot(b[0] - pp.x, b[1] - pp.z) ? q : b)); return v3(e[0], e[1]); };
+    const roamLeft = left(roamUnits()), siteLeft = left(siteUnits());
+    switch (stage) {
+      case 'ARRIVAL': return { text: airdrop.active ? 'Air entry: land in the marked area' : 'Arriving…', at: v3(setup.arrival.x, setup.arrival.z) };
+      case 'EXPLORE': {
+        const k = nearest(kitsLeft, (o) => v3(o.x, o.z, pp.y));
+        const close = k && Math.hypot(k.x - pp.x, k.z - pp.z) < 160;
+        return { text: `Collect health supplies (${got}/8), then go to the captive site`, at: close ? v3(k.x, k.z) : entrance() };
+      }
+      case 'CLEAR_SITE': {
+        const inside = Math.hypot(pp.x - site.x, pp.z - site.z) < site.r;
+        const h = nearest(siteUnits().filter((u) => u.state !== 'down'), (u) => u.model.position);
+        return { text: `Clear the captive site: ${siteLeft} of 6 defenders left`, at: inside && h ? h.model.position : entrance() };
+      }
+      case 'RESCUE': {
+        const freed = captives.units.filter((c) => c.state === 'following').length;
+        const c = nearest(captives.units.filter((u) => ['bound', 'discovered'].includes(u.state)), (u) => u.model.position);
+        return { text: `Find and free the captives (${freed}/${setup.captives.length})`, at: c?.model.position ?? null };
+      }
+      case 'ESCORT': {
+        const d = dssPos();
+        if (atDss && roamLeft + siteLeft > 0) {
+          const h = nearest(hostiles.units.filter((u) => u.id && u.state !== 'down'), (u) => u.model.position);
+          return { text: `Defeat the remaining hostiles before the handover: ${roamLeft + siteLeft} left`, at: h?.model.position ?? null };
+        }
+        const extra = roamLeft ? ` · ${roamLeft} roaming hostile${roamLeft > 1 ? 's' : ''} remain` : '';
+        return { text: atDss ? `At DSS: hand over the captives${extra}` : `Escort the captives to DSS by the river, west of the savanna village${extra}`, at: d };
+      }
+      case 'DSS_BOARDING': return { text: 'Captives boarding the DSS van…', at: null };
+      case 'DSS_DEPARTURE': return { text: 'The DSS van is leaving with the captives…', at: null };
+      default: return { text: 'Mission complete', at: null };
+    }
+  }
+
+  const proj = new THREE.Vector3();
+  function waypoint(at) {
+    if (!at) { ui.way.hidden = true; return; }
+    ui.way.hidden = false;
+    const d = Math.hypot(at.x - player.position.x, at.z - player.position.z);
+    proj.set(at.x, at.y + 2.2, at.z).project(ctx.camera);
+    const behind = proj.z > 1;
+    let x = proj.x, y = proj.y;
+    if (behind) { x = -x; y = -y; }
+    const off = behind || Math.abs(x) > 0.92 || Math.abs(y) > 0.85;
+    if (off) {
+      // Edge arrow pointing the way.
+      const k = 0.9 / Math.max(Math.abs(x) / 0.92, Math.abs(y) / 0.85, 1e-3);
+      x *= k; y *= k;
+      if (behind && Math.abs(y) < 0.6) y = -0.75;
+    }
+    ui.way.style.left = `${(x * 0.5 + 0.5) * innerWidth}px`;
+    ui.way.style.top = `${(-y * 0.5 + 0.5) * innerHeight}px`;
+    ui.wayArrow.style.transform = off ? `rotate(${Math.atan2(-y, x) * 180 / Math.PI + 90}deg)` : 'none';
+    ui.wayArrow.textContent = off ? '▲' : '◆';
+    ui.wayDist.textContent = `${Math.round(d)} m`;
+  }
+
+  function update(dt, inp = input) {
+    if (inp.consumePause?.()) togglePause();
+    if (!setup || !ready || paused) return;
+    const pp = player.position;
+    saveTimer += dt;
+    if (timers.length) {
+      const due = timers.filter((t) => (t.t -= dt) <= 0);
+      timers = timers.filter((t) => t.t > 0);
+      for (const t of due) t.fn();
+    }
+    flash -= dt;
+    // Stage changes come from mission facts.
+    if (stage === 'ARRIVAL' && !airdrop.active && player.state.mode !== 'drive') arrive();
+    if (!reachedSite && Math.hypot(pp.x - site.x, pp.z - site.z) < site.r + 20) { reachedSite = true; checkpoint(); }
+    if (stage === 'EXPLORE' && reachedSite) stage = 'CLEAR_SITE';
+    if (stage === 'CLEAR_SITE' && left(siteUnits()) === 0) { stage = 'RESCUE'; showTip('Site clear. Find and free the captives.', 4); checkpoint(); }
+    if (stage === 'RESCUE' && captives.units.length && captives.units.every((c) => c.state === 'following')) {
+      stage = 'ESCORT';
+      showTip('Escort the captives to DSS. They follow your path: use the bridges.', 5);
+      checkpoint();
+    }
+    const dss = dssPos();
+    const near = Math.hypot(pp.x - dss.x, pp.z - dss.z) < DSS_AREA.radius;
+    if (stage === 'ESCORT' && near && !atDss) { atDss = true; checkpoint(); }
+    if (!near && stage === 'ESCORT') atDss = false;
+    if (saveTimer > 20 && !hostiles.units.some((u) => u.state === 'alert' && u.model.position.distanceTo(pp) < 45)) checkpoint();
+
+    // HUD.
+    const o = objective();
+    ui.objective.textContent = o.text;
+    waypoint(o.at);
+    const total = left(hostiles.units), sl = left(siteUnits());
+    ui.counts.textContent = `Hostiles ${total}/10 · Site ${sl}/6${grenades.count ? ` · Grenades ${grenades.count}` : ''}`;
+    ui.saveWarn.hidden = !saveFailed();
+    // Interact.
+    const act = down ? null : interaction();
+    ui.interact.hidden = !act;
+    if (act) {
+      ui.interact.textContent = ctx.isTouch ? act.label : `V: ${act.label}`;
+      ui.interact.classList.toggle('locked', !act.enabled);
+    }
+    if (inp.consumeDrive?.() && act?.enabled) act.run();
+    ui.tip.hidden = flash <= 0;
+  }
+
+  // ---------------------------------------------------------------- UI
+  function showTip(text, secs) { ui.tip.textContent = text; flash = secs; ui.tip.hidden = false; }
+
+  function togglePause(force) {
+    paused = force ?? !paused;
+    ui.pause.hidden = !paused;
+    if (paused) refreshPause();
+  }
+
+  function refreshPause() {
+    const inv = account.inventory;
+    ui.pauseInfo.innerHTML = `${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} missions · ${account.captivesRescued} captives rescued<br>
+      Inventory: ${inv.parachute} parachute · ${inv.glider} glider · ${inv.grenade} grenades${inv.truck ? ' · pickup' : ''}${inv.bike ? ' · motorbike' : ''}<br>
+      This mission: ${setup?.captives.length ?? 0} captive${setup?.captives.length === 1 ? '' : 's'} · entry: ${setup?.entry ?? '-'} · ${setup?.grenades ?? 0} grenades`;
+    for (const b of ui.entryBtns) b.classList.toggle('on', b.dataset.entry === account.nextEntry);
+  }
+
+  function buildUi() {
+    const el = (id) => document.getElementById(id);
+    const u = {
+      objective: el('objective'), counts: el('counts'), way: el('waypoint'), wayArrow: el('way-arrow'), wayDist: el('way-dist'),
+      interact: el('interact-btn'), tip: el('tip'), down: el('down'), results: el('results'), resultsBody: el('results-body'),
+      pause: el('pause'), pauseInfo: el('pause-info'), saveWarn: el('save-warn'),
+      entryBtns: [...document.querySelectorAll('#pause [data-entry]')],
+    };
+    const on = (id, f) => el(id)?.addEventListener('click', f);
+    // Interact (phones tap the button; desktop presses V).
+    const hit = (e) => { input.state.drive = true; e.preventDefault(); };
+    u.interact.addEventListener('touchstart', hit, { passive: false });
+    u.interact.addEventListener('click', hit);
+    on('down-checkpoint', () => restartCheckpoint());
+    on('down-retry', () => retry());
+    on('results-again', () => newMission());
+    on('pause-resume', () => togglePause(false));
+    on('pause-checkpoint', () => { togglePause(false); restartCheckpoint(); });
+    on('pause-retry', () => { togglePause(false); retry(); });
+    on('pause-new', () => {
+      if (!finished && !confirm('Abandon this mission and start a new one? Progress is lost; characters, RP and purchases stay.')) return;
+      togglePause(false);
+      newMission();
+    });
+    for (const b of u.entryBtns) {
+      b.addEventListener('click', () => {
+        const e = b.dataset.entry;
+        if (e !== 'ground' && !(account.inventory[e] > 0)) { alert(`No ${e} owned. Use the test buttons below to add one.`); return; }
+        account.nextEntry = e;
+        saveAccount(account);
+        refreshPause();
+      });
+    }
+    const give = (f) => () => { f(account.inventory); saveAccount(account); refreshPause(); };
+    on('test-chute', give((i) => { i.parachute++; }));
+    on('test-glider', give((i) => { i.glider++; }));
+    on('test-grenades', give((i) => { i.grenade += 3; }));
+    on('test-truck', give((i) => { i.truck = true; }));
+    on('test-bike', give((i) => { i.bike = true; }));
+    on('test-char', () => ctx.characters?.next());
+    return u;
+  }
+
+  // Portrait rotation or leaving the app: save and pause; resume is the player's choice.
+  const away = () => { if (ready && !finished && !down) { checkpoint(); togglePause(true); } };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) away(); });
+  matchMedia('(orientation: portrait) and (pointer: coarse)').addEventListener?.('change', (e) => { if (e.matches) away(); });
+
+  return {
+    begin,
+    update,
+    onDefeated,
+    onCollect,
+    onDiscover,
+    onDown,
+    takeDriveRequest,
+    arrive: () => { if (stage === 'ARRIVAL') arrive(); },
+    get paused() { return paused; },
+    get stage() { return stage; },
+    get setup() { return setup; },
+    get account() { return account; },
+    retry,
+    newMission,
+    restartCheckpoint,
+    checkpoint,
+    site,
+  };
+}

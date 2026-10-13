@@ -430,7 +430,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     // Visuals follow the physics body.
     root.position.set(next.x, next.y - FOOT_OFFSET, next.z);
     // While aiming, the character turns to face where the camera looks.
-    state.aiming = s.fire && !state.disabled && state.mode === 'ground';
+    state.aiming = (s.fire || s.aim) && s.weapon !== 'unarmed' && !state.disabled && state.mode === 'ground';
     if (state.mode !== 'climb' && (state.aiming || mag > 0.05)) {
       const targetFacing = state.aiming ? Math.atan2(forward.x, forward.z) : Math.atan2(move.x, move.z);
       let diff = targetFacing - facing;
@@ -512,6 +512,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       root.rotation.set(0, facing, 0);
       this.teleport(x, y, z);
     },
+    setFacing(y) { facing = y; root.rotation.set(0, y, 0); },
     teleport(x, y, z) {
       body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true);
       state.mode = 'ground';

@@ -2,9 +2,9 @@
 // a dark SUV and a grey van (Meshy) parked under a big shade tree, a tarp
 // canopy with a table and olive equipment cases, and a rocky river with rapids.
 //
-// When the player arrives with following hostages, they walk to the van's
-// open rear doors and climb in. Once everyone is aboard the van drives off,
-// then returns a little later for the next group.
+// The mission runs the handover (game plan v2.2): captives walk to the van's
+// open rear doors and climb in (`rearDoor`), then `depart` drives the van
+// north to its endpoint and reports when it gets there. `reset` parks it again.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
@@ -14,8 +14,6 @@ import {
 } from './world.js';
 import { tarpMaterial, cloth } from './camp.js';
 
-const RP_PER_HOSTAGE = 5000;
-const ARRIVE_RADIUS = 12;   // how close the player must bring hostages
 const time = { value: 0 };
 
 const W = (x, y, z) => new THREE.Vector3(DSS.x + x, groundHeight(DSS.x + x, DSS.z + z) + y, DSS.z + z);
@@ -83,7 +81,7 @@ function addCases(scene, physics, spots) {
   scene.add(mesh);
 }
 
-export async function buildDss(scene, physics, hostages, onDelivered) {
+export async function buildDss(scene, physics) {
   const rand = makeRandom(57);
   buildRiver(scene);
 
@@ -154,53 +152,38 @@ export async function buildDss(scene, physics, hostages, onDelivered) {
   // Point just behind the van's open rear doors.
   const rearDoor = () => new THREE.Vector3(van3.pos.x, 0, van3.pos.z + vanLength / 2 + 0.6);
 
-  let delivered = 0;
-  let boarding = 0;
+  const DEPART_TIME = 9;   // seconds from pulling away to the departure endpoint
+  let onGone = null;
 
-  return function update(dt, player) {
-    time.value += dt;
-
-    if (van3.state === 'parked') {
-      const near = player.position.distanceTo(van3.pos) < ARRIVE_RADIUS;
-      if (near && hostages.line.length > 0) {
-        // Followers who have reached the clearing head for the van's rear doors.
-        for (const u of [...hostages.line]) {
-          if (u.model.position.distanceTo(van3.pos) > ARRIVE_RADIUS + 8) continue;
-          boarding++;
-          hostages.sendTo(u, rearDoor(), (h) => {
-            h.model.visible = false; // climbed in
-            h.gone = true;
-            boarding--;
-            delivered++;
-            van3.aboard++;
-            onDelivered?.(h.name, delivered, hostages.total, delivered * RP_PER_HOSTAGE);
-          });
-        }
-      }
-      // Leaves once everyone who came has boarded and the player has no one else following.
-      if (van3.aboard > 0 && boarding === 0 && hostages.line.length === 0) {
-        van3.timer += dt;
-        if (van3.timer > 1.5) { van3.state = 'leaving'; van3.timer = 0; }
-      }
-    } else if (van3.state === 'leaving') {
+  return {
+    get pos() { return parked; },
+    rearDoor,
+    // Drives off north; `done` runs at the departure endpoint.
+    depart(done) { if (van3.state === 'parked') { van3.state = 'leaving'; van3.timer = 0; onGone = done; } },
+    reset() {
+      van3.pos.copy(parked);
+      van3.speed = 0;
+      van3.timer = 0;
+      van3.state = 'parked';
+      vanMesh.visible = true;
+      onGone = null;
+      placeVan();
+    },
+    get state() { return van3.state; },
+    update(dt) {
+      time.value += dt;
+      if (van3.state !== 'leaving') return;
       van3.speed = Math.min(14, van3.speed + 3 * dt);
       van3.pos.z -= van3.speed * dt;
       van3.pos.y = groundHeight(van3.pos.x, van3.pos.z) - 0.05;
       van3.timer += dt;
-      if (van3.timer > 9) { vanMesh.visible = false; van3.state = 'away'; van3.timer = 0; }
-      placeVan();
-    } else if (van3.state === 'away') {
-      // Comes back for the next group.
-      van3.timer += dt;
-      if (van3.timer > 15) {
-        van3.pos.copy(parked);
-        van3.speed = 0;
-        van3.aboard = 0;
-        van3.timer = 0;
-        vanMesh.visible = true;
-        van3.state = 'parked';
-        placeVan();
+      if (van3.timer > DEPART_TIME) {
+        vanMesh.visible = false;
+        van3.state = 'away';
+        const f = onGone; onGone = null;
+        f?.();
       }
-    }
+      placeVan();
+    },
   };
 }

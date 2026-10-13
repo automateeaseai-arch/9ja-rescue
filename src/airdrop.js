@@ -19,7 +19,9 @@ const RAMP_Z = -6.9;           // where the player stands, just inside the open 
 const PLANE_SPEED = 32;        // m/s (slow for a real plane; the jump zone passes quickly enough)
 const DROP_HEIGHT = 135;       // floor height above the highest ground under the flight path
 const FLIGHT = 28;             // seconds of flight before the plane leaves the area
-const AUTO_JUMP = 16;          // the player is pushed out after this long
+const APPROACH = 420;          // the plane starts this far before the landing area
+const READY = 200;             // jumping is allowed this close to (or past) the area
+const AUTO_PAST = 120;         // ...and the player is pushed out this far past it
 const FLY_TIME = 30;           // jump to landing
 // Propellers, in the model's own units (nose along -X): hub height, the
 // propeller plane, radius, and each engine's place along the wing.
@@ -32,8 +34,9 @@ const KINDS = {
     pose: { clip: 'barHang', rate: 1 }, camDist: 9, camHeight: 2.2 },
 };
 
-// opts: scene, physics, player, fx, heightAt(x, z, yHint) walking height, waterAt(x, z), hurt(damage)
-export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, hurt }) {
+// opts: scene, physics, player, fx, heightAt(x, z, yHint) walking height, waterAt(x, z), hurt(damage),
+// onLand() once the player is on the ground again
+export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, hurt, onLand }) {
   const group = new THREE.Group();      // the plane: local +Z is the nose, floor at y = 0
   group.visible = false;
   scene.add(group);
@@ -88,8 +91,31 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
   const prompt = document.getElementById('prompt');
 
   // Starts the drop: the plane flies along `heading` from (x, z).
-  function start(kind, x, z, heading) {
+  // Landing area marker: a soft beam of light over the target.
+  const marker = new THREE.Group();
+  {
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 120, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: '#7dffa0', transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    beam.position.y = 60;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(9, 11, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: '#7dffa0', transparent: true, opacity: 0.55, depthWrite: false, fog: false }));
+    ring.position.y = 0.3;
+    marker.add(beam, ring);
+    marker.visible = false;
+    scene.add(marker);
+  }
+  let landAt = null, avoid = null;
+
+  // Starts the drop. The plane flies along `heading` and passes over
+  // `aim` ({ x, z }), the marked landing area; `keepOut` ({ x, z, r }) is an
+  // area the steering gently pushes the flyer away from (the captive site).
+  function start(kind, aim, heading, keepOut = null) {
     if (player.state.disabled) return;
+    landAt = aim;
+    avoid = keepOut;
+    marker.position.set(aim.x, heightAt(aim.x, aim.z), aim.z);
+    marker.visible = true;
+    const x = aim.x - Math.sin(heading) * APPROACH, z = aim.z - Math.cos(heading) * APPROACH;
     st.kind = kind;
     st.phase = 'plane';
     st.snagged = st.crashed = st.crash = false;
@@ -113,7 +139,8 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     vel.copy(planeVel).multiplyScalar(0.7);
     vel.addScaledVector(planeVel, -2.5 / PLANE_SPEED);
     vel.y = 1.5;
-    st.heading = st.planeHeading + Math.PI;
+    // Turn to face the landing area.
+    st.heading = landAt ? Math.atan2(landAt.x - pos.x, landAt.z - pos.z) : st.planeHeading + Math.PI;
     st.speed = 0;
   }
 
@@ -250,6 +277,8 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     // Shallow water: feet on the bottom (wading).
     player.leaveRide(pos.x, deep ? w.level - 1.25 : sb.ground, pos.z);
     st.landed = { x: pos.x, z: pos.z, y: w ? w.level : ground, heading: st.heading, water: !!w };
+    marker.visible = false;
+    onLand?.();
     if (w) { splash.start(pos.x, w.level, pos.z, -vel.y > 6); fx?.splash(); }
     // The glider comes down just behind the player.
     const g = gear.glider;
@@ -314,7 +343,10 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
       pos.set(0, 0, RAMP_Z).applyMatrix4(group.matrixWorld);
       player.ride({ pos: pos.clone(), heading: st.planeHeading + Math.PI, show: true, pose: { clip: 'idle', rate: 1 }, quat: null });
       st.camDist = 2.7; st.camHeight = 1.7;
-      if ((jumpPressed && st.t > 0.5) || st.t > AUTO_JUMP) jump();
+      // Along the path: negative before the landing area, positive past it.
+      const along = (group.position.x - landAt.x) * Math.sin(st.planeHeading) + (group.position.z - landAt.z) * Math.cos(st.planeHeading);
+      st.ready = along > -READY;
+      if ((jumpPressed && st.ready && st.t > 0.5) || along > AUTO_PAST) jump();
       fx?.wind(0.35, 260);
       return;
     }
@@ -386,8 +418,17 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
       return;
     }
 
-    // Flying under the canopy or wing.
+    // Flying under the canopy or wing. Assisted steering: with no stick input
+    // the flyer turns gently towards the landing area.
     st.heading -= st.steer * K.turn * dt;
+    if (landAt && Math.abs(steerIn) < 0.1) {
+      const dx = landAt.x - pos.x, dz = landAt.z - pos.z;
+      if (Math.hypot(dx, dz) > 20) {
+        const want = Math.atan2(dx, dz);
+        const diff = Math.atan2(Math.sin(want - st.heading), Math.cos(want - st.heading));
+        st.heading += THREE.MathUtils.clamp(diff, -1, 1) * 0.35 * dt;
+      }
+    }
     st.bank = THREE.MathUtils.damp(st.bank, -st.steer * 0.35, 3, dt);
     const target = push > 0.1 ? THREE.MathUtils.lerp(K.speed, K.fast, push) : push < -0.1 ? THREE.MathUtils.lerp(K.speed, K.slow, -push) : K.speed;
     st.speed = THREE.MathUtils.damp(st.speed, target, 1.5, dt);
@@ -400,6 +441,15 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     vel.y = THREE.MathUtils.damp(vel.y, -sink, 2.5, dt);
     vel.x = THREE.MathUtils.damp(vel.x, fwd.x * st.speed, 2, dt);
     vel.z = THREE.MathUtils.damp(vel.z, fwd.z * st.speed, 2, dt);
+    // Assisted steering: kept out of the captive site.
+    if (avoid) {
+      const ax = pos.x - avoid.x, az = pos.z - avoid.z, ad = Math.hypot(ax, az);
+      if (ad < avoid.r + 40) {
+        const push = (1 - Math.max(0, ad - avoid.r) / 40) * 7;
+        vel.x += (ax / (ad || 1)) * push * dt * 3;
+        vel.z += (az / (ad || 1)) * push * dt * 3;
+      }
+    }
     prev.copy(pos);
     pos.addScaledVector(vel, dt);
     const bodyQ = placeGear(dt);
@@ -503,6 +553,14 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
   return {
     update,
     start,
+    get ready() { return st.phase === 'plane' && !!st.ready; },
+    // Ends any drop at once (checkpoint restore, new mission).
+    cancel() {
+      st.phase = 'off';
+      group.visible = marker.visible = false;
+      for (const o of Object.values(gear)) o.visible = false;
+      fx?.wind(0, 400);
+    },
     get active() { return st.phase !== 'off' && st.phase !== 'landed'; },
     get snagged() { return st.phase === 'snag' || (st.phase === 'landed' && (st.snagged || st.crashed)); },
     get crashed() { return st.crash; },
