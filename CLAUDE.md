@@ -13,7 +13,7 @@ Landscape, third-person 3D rescue game for **mobile web browsers** (fictional Ni
 ## Where things live
 - Playable link (private claude.ai artifact; republish to the same URL): https://claude.ai/artifact/2a5tDXarnH6abmbXxjHrzP
 - Branch: `ccr-8667c989-hiwgos` on `automateeaseai-arch/9ja-rescue`
-- Meshy API: `https://api.meshy.ai` (the proxy injects the key; check balance with `GET /openapi/v1/balance`). Credits reset monthly around **11 November 2026**. **Balance now: 1 credit.**
+- Meshy API: `https://api.meshy.ai` (the proxy injects the key; check balance with `GET /openapi/v1/balance`). Credits reset monthly around **11 November 2026**. **Balance (13 Oct): 1,115 credits.**
 
 ## Tech stack
 Three.js 0.170 (graphics), Rapier 0.14 compat (physics), Vite 5 (dev server/build). Run `npm install`, then `npm run dev` (port 5173). Asset tools use gltf-transform, sharp and meshoptimizer (dev dependencies).
