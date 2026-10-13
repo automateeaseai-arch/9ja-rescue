@@ -197,7 +197,7 @@ async function start() {
   const driveBtn = document.getElementById('drive-btn');
   // Air drop from a cargo plane (test buttons for now; missions will choose when).
   // The test plane flies north over the River Valley; the open ramp looks back south.
-  const airdrop = createAirDrop({ scene, player, fx, heightAt: surfaceAt, waterAt, hurt: (n) => combat.hurt(n) });
+  const airdrop = createAirDrop({ scene, physics, player, fx, heightAt: surfaceAt, waterAt, hurt: (n) => combat.hurt(n) });
   const dropTest = (kind) => {
     if (vehicles.driving || airdrop.active || player.state.disabled) return;
     airdrop.start(kind, VALLEY_ORIGIN.x + 10, VALLEY_ORIGIN.z + 120, Math.PI);
@@ -290,9 +290,9 @@ async function start() {
     // Pull the camera in if a wall or rock is between it and the player.
     ray.origin = { x: head.x, y: head.y, z: head.z };
     ray.dir = { x: camOffset.x, y: camOffset.y, z: camOffset.z };
-    const hit = air ? null : physics.castRay(ray, car ? car.T.camDist : CAM_DIST, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
     // Closer over the shoulder while aiming; further back in a vehicle or in the air.
     const wantDist = air ? airdrop.camDist : car ? car.T.camDist : player.state.aiming ? 2.8 : CAM_DIST;
+    const hit = physics.castRay(ray, Math.max(camDist, wantDist), true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
     camDist = air === 'plane' ? wantDist : THREE.MathUtils.damp(camDist, wantDist, 3, dt || 1);
     let dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
     // In the air, come in closer rather than sit inside a tree's leaves.
@@ -388,7 +388,8 @@ async function start() {
     // Air drop hints.
     if (airdrop.snagged) {
       promptEl.hidden = false;
-      promptEl.textContent = `Caught in a tree! The ${airdrop.kind === 'parachute' ? 'parachute' : 'glider'} is stuck`;
+      const what = airdrop.kind === 'parachute' ? 'parachute' : 'glider';
+      promptEl.textContent = airdrop.crashed ? `Crashed into a wall! The ${what} collapsed` : `Caught in a tree! The ${what} is stuck`;
     } else if (airdrop.active) {
       const ph = airdrop.phase, J = input.isTouch ? 'Jump' : 'Space';
       const what = airdrop.kind === 'parachute' ? 'parachute' : 'glider';

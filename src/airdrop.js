@@ -9,6 +9,7 @@
 // The descent rate adapts to the height left so the landing comes about 30 s
 // after the jump (sooner over high ground).
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
 import { treeAt } from './kit/crowns.js';
 
@@ -27,8 +28,8 @@ const KINDS = {
     pose: { clip: 'barHang', rate: 1 }, camDist: 9, camHeight: 2.2 },
 };
 
-// opts: scene, player, fx, heightAt(x, z, yHint) walking height, waterAt(x, z), hurt(damage)
-export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
+// opts: scene, physics, player, fx, heightAt(x, z, yHint) walking height, waterAt(x, z), hurt(damage)
+export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, hurt }) {
   const group = new THREE.Group();      // the plane: local +Z is the nose, floor at y = 0
   group.visible = false;
   scene.add(group);
@@ -77,7 +78,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
     if (player.state.disabled) return;
     st.kind = kind;
     st.phase = 'plane';
-    st.snagged = false;
+    st.snagged = st.crashed = st.crash = false;
     st.t = 0;
     st.planeHeading = heading;
     // Fly above the highest ground under the path.
@@ -118,31 +119,56 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
     fall: [[0, 0.3, 0], [0, 1.0, 0]],
   };
   const probe = new THREE.Vector3(), yawQ = new THREE.Quaternion(), Yax = new THREE.Vector3(0, 1, 0);
-  function hitsTree(set) {
+  // What the flyer ran into this step: 'tree', a wall or building ({ nx, nz },
+  // the direction it faces), or null. Walls and buildings are found by casting
+  // a ray along each probe's path since `prev`; floors, roofs and gentle
+  // ground (surfaces facing up) are left to the landing.
+  const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  const from = new THREE.Vector3(), step = new THREE.Vector3(), prev = new THREE.Vector3();
+  function collide(set) {
     yawQ.setFromAxisAngle(Yax, st.heading);
+    step.subVectors(pos, prev);
+    const len = step.length();
     for (const p of PROBES[set]) {
       probe.set(p[0], p[1], p[2]).applyQuaternion(yawQ).add(pos);
-      if (treeAt(probe.x, probe.y, probe.z)) return true;
+      if (treeAt(probe.x, probe.y, probe.z)) return 'tree';
+      if (!physics || len < 1e-4) continue;
+      from.copy(probe).sub(step);
+      ray.origin = { x: from.x, y: from.y, z: from.z };
+      ray.dir = { x: step.x / len, y: step.y / len, z: step.z / len };
+      const hit = physics.castRayAndGetNormal(ray, len + 0.3, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS);
+      if (hit && hit.normal.y < 0.6) {
+        const h = Math.hypot(hit.normal.x, hit.normal.z) || 1;
+        return { nx: hit.normal.x / h, nz: hit.normal.z / h };
+      }
     }
-    return false;
+    return null;
   }
 
   // Caught in a tree: the parachute or glider stays in the branches and the
   // player drops to the ground below.
-  function snag() {
+  // Crashed into a wall or building: the canopy or wing collapses and falls
+  // with the player, who bounces back off the wall.
+  function snag(what) {
     st.phase = 'snag';
     st.t = 0;
     st.snagY = pos.y;
-    vel.x *= 0.15; vel.z *= 0.15;
+    st.crash = what !== 'tree';
+    if (st.crash) {
+      pos.copy(prev);
+      vel.x = what.nx * 1.5; vel.z = what.nz * 1.5;
+    } else { vel.x *= 0.15; vel.z *= 0.15; }
     vel.y = Math.min(vel.y, 0) * 0.3;
     fx?.punch();
   }
 
   function land(ground) {
+    const crashed = st.phase === 'snag' && st.crash;
     if (st.phase === 'snag') hurt?.(Math.round(Math.min(35, 5 + Math.max(0, st.snagY - ground) * 1.5)));
     const snagged = st.phase === 'snag';
     st.phase = 'landed';
-    st.snagged = snagged;
+    st.snagged = snagged && !crashed;
+    st.crashed = crashed;
     st.t = 0;
     const w = waterAt?.(pos.x, pos.z);
     player.leaveRide(pos.x, w && w.level > ground ? Math.max(ground, w.level - 1.2) : ground, pos.z);
@@ -216,6 +242,9 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
       // Dropping out of the tree.
       vel.y = Math.max(-30, vel.y - 9.8 * dt);
       pos.addScaledVector(vel, dt);
+      // A collapsed canopy or wing comes down with the player.
+      const g = gear[st.kind];
+      if (g && st.crash) g.position.addScaledVector(vel, dt);
       e.set(0, st.heading, 0, 'YXZ');
       player.ride({ pos: pos.clone(), heading: st.heading, show: true, quat: q.setFromEuler(e).clone(), pose: { clip: 'ropeHang', rate: 2 }, noRifle: true });
       st.camDist = 6; st.camHeight = 1.4;
@@ -240,8 +269,8 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
     }
 
     const K = KINDS[st.kind];
-    const steerIn = THREE.MathUtils.clamp(s.moveX, -1, 1);
-    const push = THREE.MathUtils.clamp(s.moveY, -1, 1);
+    const steerIn = THREE.MathUtils.clamp(s.moveX || 0, -1, 1);
+    const push = THREE.MathUtils.clamp(s.moveY || 0, -1, 1);
     st.steer = THREE.MathUtils.damp(st.steer, steerIn, 4, dt);
     const ground = heightAt(pos.x, pos.z, pos.y);
 
@@ -254,6 +283,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
       const drift = 3 + Math.max(0, push) * 3;
       vel.x = THREE.MathUtils.damp(vel.x, fwd.x * drift, 0.8, dt);
       vel.z = THREE.MathUtils.damp(vel.z, fwd.z * drift, 0.8, dt);
+      prev.copy(pos);
       pos.addScaledVector(vel, dt);
       st.bank = THREE.MathUtils.damp(st.bank, -st.steer * 0.5, 4, dt);
       // Belly down, arms and legs out (the swimming stroke, slowed).
@@ -264,7 +294,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
       fx?.wind(0.25 + Math.min(1, -vel.y / 30) * 0.6, 900 + Math.min(1, -vel.y / 30) * 1400);
       if ((jumpPressed && st.t > 0.4) || st.t > K.free) deploy();
       if (pos.y <= ground) land(ground);
-      else if (hitsTree('fall')) snag();
+      else { const c = collide('fall'); if (c) snag(c); }
       return;
     }
 
@@ -282,13 +312,14 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
     vel.y = THREE.MathUtils.damp(vel.y, -sink, 2.5, dt);
     vel.x = THREE.MathUtils.damp(vel.x, fwd.x * st.speed, 2, dt);
     vel.z = THREE.MathUtils.damp(vel.z, fwd.z * st.speed, 2, dt);
+    prev.copy(pos);
     pos.addScaledVector(vel, dt);
     const bodyQ = placeGear(dt);
     player.ride({ pos: pos.clone(), heading: st.heading, show: true, quat: bodyQ.clone(), pose: K.pose, noRifle: true });
     st.camDist = K.camDist; st.camHeight = K.camHeight;
     fx?.wind(0.12 + st.speed / 60, 500);
     if (pos.y <= ground + 0.02) land(ground);
-    else if (st.open > 0.6 && hitsTree(st.kind)) snag();
+    else { const c = collide(st.open > 0.6 ? st.kind : 'fall'); if (c) snag(c); }
   }
 
   // Code-built cargo details inside the Meshy bay: floor rails, red webbing
@@ -337,7 +368,8 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
     update,
     start,
     get active() { return st.phase !== 'off' && st.phase !== 'landed'; },
-    get snagged() { return st.phase === 'snag' || (st.phase === 'landed' && st.snagged); },
+    get snagged() { return st.phase === 'snag' || (st.phase === 'landed' && (st.snagged || st.crashed)); },
+    get crashed() { return st.crash; },
     get phase() { return st.phase; },
     get kind() { return st.kind; },
     get heading() { return st.phase === 'plane' ? st.planeHeading + Math.PI : st.heading; },
@@ -347,6 +379,8 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
     get altitude() { return pos.y - heightAt(pos.x, pos.z, pos.y); },
     st,
     plane: group,
+    pos,
+    vel,
     gear,
     prompt,
   };
