@@ -72,6 +72,11 @@ From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mj
 |---|---|---|---|
 | Rifle (carbine, olive furniture, red-dot sight) | `public/models/items/Rifle.glb` | 354,956 B, 9,956 tris, 1024 px texture. Task `01a13556-4f0c-7275-8c91-0725d8ab7857`, 30 credits | Player's rifle: in the right hand while aiming (shots leave its muzzle), slung across the back otherwise. Shown 85 cm long |
 | First-aid kit (white and teal case, green cross) | `public/models/items/First_Aid_Kit.glb` | 130,604 B, 2,989 tris, 512 px texture. Task `01a13556-53d4-743b-8614-635d7ac1bfe7`, 30 credits | 11 kits along the routes, hovering over a green ring; +50 health, once each, only taken when hurt |
+| Grenade (yellow and black, ring pull) | `public/models/items/Grenade.glb` | 170,160 B, 3,087 tris, 512 px texture. Task `01a13589-e0ba-72a1-9dfe-a2df570f80da`, 30 credits | Thrown grenade and held in the hand during the throw; shown 12 cm tall |
+| Parachute (yellow/black canopy with harness pack) | `public/models/items/Parachute.glb` | 492,548 B, 9,974 tris, 1024 px texture. Task `01a13589-cdf0-7149-8902-b63aab397c63`, 30 credits | On show: drifts down over the savanna east of the arrival road, lands, repeats. Canopy about 7.5 m wide |
+| Hang glider (yellow/black wing, black frame) | `public/models/items/Hang_Glider.glb` | 387,236 B, 7,907 tris, 1024 px texture. Task `01a13589-d3cf-71f8-9e21-5eb60d5df0a9`, 30 credits | On show: resting at the valley viewpoint over the gorge. About 9.5 m wingspan |
+| Pickup truck (green, yellow stripes, roof rack, rear bench cage) | `public/models/vehicles/Pickup_Truck.glb` | 597,012 B, 20,095 tris, 1024 px texture. Task `01a13589-d780-7471-8634-f0d37f417fbf`, 30 credits | On show: parked east of the arrival road, facing north; solid. About 5.3 m long. Front along local -X |
+| Motorbike (green dual-sport, gold forks) | `public/models/vehicles/Motorbike.glb` | 613,508 B, 15,148 tris, 1024 px texture. Task `01a13589-dbc5-7400-bcef-700b848f616c`, 30 credits | On show: parked west of the arrival road, leaning on its stand; solid. About 2.2 m long. Front along local -X |
 
 ## Environment register (northern savanna)
 | Piece | File | Details | Rig | In game |

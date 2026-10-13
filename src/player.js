@@ -474,6 +474,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     get position() { return root.position; },
     get crouching() { return state.crouch; },
     get throwing() { return throwT >= 0; },
+    get released() { return throwT >= THROW_RELEASE; },
     hand(out = new THREE.Vector3()) { return bones.RightHand ? bones.RightHand.getWorldPosition(out) : out.copy(root.position).setY(root.position.y + 1.6); },
     findLedge: (dir) => findLedge(body.translation(), dir),
     get facing() { return facing; },

@@ -3,9 +3,11 @@
 // guards nearby (less behind cover), alerts guards within 20 m, can hurt the
 // player too, shakes the camera, and leaves damage behind: a scorched crater
 // mark on the ground or wall and scattered rubble.
-// The grenade itself is a code-built placeholder until the Meshy model is made.
+// The grenade is the Meshy model from the owner's picture (yellow and black),
+// held in the right hand during the throw.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { loadGlb } from './player.js';
 
 const SPEED = 15;          // m/s out of the hand
 const LOFT = 0.32;         // extra upward angle (radians) above where the camera looks
@@ -65,8 +67,8 @@ function scorchTexture() {
 
 // opts: scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer(damage)
 export function createGrenades({ scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer }) {
-  // Placeholder grenade: olive body, darker fuse cap and lever.
-  const body = new THREE.Group();
+  // Code-built stand-in until the Meshy grenade has downloaded.
+  let body = new THREE.Group();
   const olive = new THREE.MeshStandardMaterial({ color: '#4c5a2c', roughness: 0.7, metalness: 0.2 });
   const dark = new THREE.MeshStandardMaterial({ color: '#2a2a26', roughness: 0.5, metalness: 0.6 });
   const egg = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), olive);
@@ -77,6 +79,17 @@ export function createGrenades({ scene, physics, camera, player, hostiles, fx, w
   lever.position.set(0.04, 0.035, 0);
   body.add(egg, cap, lever);
   body.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  const held = new THREE.Group();
+  held.visible = false;
+  scene.add(held);
+  held.add(body.clone());
+  loadGlb('models/items/Grenade.glb').then((gltf) => {
+    body = gltf.scene;
+    body.scale.setScalar(0.065); // about 12 cm tall
+    body.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    held.clear();
+    held.add(body.clone());
+  }).catch((err) => console.error(err));
 
   const flying = [];
   const fireTex = radial([[0, 'rgba(255,255,230,1)'], [0.25, 'rgba(255,210,90,1)'], [0.6, 'rgba(240,110,30,0.75)'], [1, 'rgba(160,40,10,0)']]);
@@ -235,6 +248,12 @@ export function createGrenades({ scene, physics, camera, player, hostiles, fx, w
     if (player.state.release) {
       player.state.release = false;
       throwOne();
+    }
+    // In the hand from the start of the throw until it is let go.
+    held.visible = player.throwing && !player.released;
+    if (held.visible) {
+      player.hand(held.position);
+      held.rotation.y = player.facing;
     }
     for (let i = flying.length - 1; i >= 0; i--) {
       const f = flying[i];

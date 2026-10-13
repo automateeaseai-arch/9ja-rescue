@@ -8,6 +8,7 @@ import { createFx } from './fx.js';
 import { createCombat } from './combat.js';
 import { createPickups } from './pickups.js';
 import { createGrenades } from './grenades.js';
+import { createShowcase } from './showcase.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
@@ -185,6 +186,15 @@ async function start() {
   ];
   grenades = createGrenades({ scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer: (n) => combat.hurt(n) });
   const throwBtn = document.getElementById('throw-btn');
+  // New Meshy models on show: pickup and motorbike by the arrival road, hang
+  // glider at the valley viewpoint, a parachute drifting down over the savanna.
+  const updateShowcase = createShowcase(scene, physics, {
+    heightAt: surfaceAt,
+    spots: {
+      truck: [roadX(46) + 6, 46, 0.15], bike: [roadX(40) - 4.5, 40, -0.3],
+      glider: [...toWorld([VL.VIEWPOINT.x + 4, VL.VIEWPOINT.z + 6]), 0.6], parachute: [roadX(70) + 25, 70],
+    },
+  });
   const pickups = createPickups(scene, { spots: kitSpots, heightAt: surfaceAt, heal: (n) => combat.heal(n), fx });
   let updateDss = () => {};
   buildDss(scene, physics, hostages, delivered).then((f) => { updateDss = f; }).catch((err) => console.error(err));
@@ -304,6 +314,7 @@ async function start() {
     crouchBtn.classList.toggle('on', player.crouching);
     pickups.update(dt, player);
     grenades.update(dt);
+    updateShowcase(dt);
     throwBtn.classList.toggle('wait', !grenades.ready);
     hostages.update(dt, player);
     updateDss(dt, player);
@@ -313,7 +324,7 @@ async function start() {
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades,
+    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades, showcase: updateShowcase,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
