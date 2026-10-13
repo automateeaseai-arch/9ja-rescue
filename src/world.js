@@ -456,6 +456,55 @@ export function bakeModel(gltf) {
 }
 
 // Places copies of one Meshy model. `items` are [x, z, rotation, scale, sink].
+// Box collider fitted to a copied rock. `s` is a number or a Vector3.
+export function rockCollider(physics, box) {
+  return (x, y, z, rot, s, q) => {
+    const sv = typeof s === 'number' ? new THREE.Vector3(s, s, s) : s;
+    const hx = (box.max.x - box.min.x) * sv.x * 0.5;
+    const hy = (box.max.y - box.min.y) * sv.y * 0.5;
+    const hz = (box.max.z - box.min.z) * sv.z * 0.5;
+    addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(hx, hy, hz), { x, y: y + hy, z }, q);
+  };
+}
+
+// Weathered granite: dark crack lines and patches of orange, yellow and pale
+// green lichen, painted procedurally in world space so every copy differs.
+export function makeGranite(model) {
+  model.mat = model.mat.clone();
+  model.mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRockPos;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vec4 rp = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          rp = instanceMatrix * rp;
+        #endif
+        vRockPos = (modelMatrix * rp).xyz;`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vRockPos;
+        float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float n3(vec3 p) {
+          vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+                     mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z);
+        }
+        float fbm(vec3 p) { return n3(p) * 0.55 + n3(p * 2.1) * 0.3 + n3(p * 4.3) * 0.15; }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 rp = vRockPos;
+        float crack = 1.0 - smoothstep(0.0, 0.012, abs(fbm(rp * 0.45) - 0.5));
+        float fine = 1.0 - smoothstep(0.0, 0.01, abs(n3(rp * 3.1) - 0.5));
+        float lichen = smoothstep(0.66, 0.7, fbm(rp * 4.5 + 7.0));
+        float pale = smoothstep(0.7, 0.74, fbm(rp * 6.0 + 21.0));
+        vec3 col = diffuseColor.rgb * (0.88 + 0.24 * n3(rp * 9.0));
+        col = mix(col, vec3(0.85, 0.58, 0.22), lichen * 0.55);
+        col = mix(col, vec3(0.8, 0.8, 0.66), pale * 0.45);
+        col = mix(col, col * 0.45, max(crack * 0.8, fine * 0.35));
+        diffuseColor.rgb = col;`);
+  };
+  return model;
+}
+
 export function placeCopies(scene, model, items, makeCollider) {
   const mesh = new THREE.InstancedMesh(model.geo, model.mat, items.length);
   const m = new THREE.Matrix4();
@@ -463,14 +512,16 @@ export function placeCopies(scene, model, items, makeCollider) {
   const e = new THREE.Euler();
   const color = new THREE.Color();
   items.forEach(([x, z, rot, scale, sink = 0, tilt = 0], i) => {
-    const y = groundHeight(x, z) - sink * scale;
+    // `scale` is a number, or [sx, sy, sz] for squashed or stretched copies.
+    const sv = Array.isArray(scale) ? new THREE.Vector3(...scale) : new THREE.Vector3(scale, scale, scale);
+    const y = groundHeight(x, z) - sink * sv.y;
     q.setFromEuler(e.set(tilt, rot, tilt * 0.5));
-    m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(scale, scale, scale));
+    m.compose(new THREE.Vector3(x, y, z), q, sv);
     mesh.setMatrixAt(i, m);
     // Slight tint so repeated copies don't look identical.
     const t = 0.88 + ((i * 37) % 13) / 13 * 0.24;
     mesh.setColorAt(i, color.setRGB(t * 1.08, t * (0.8 + ((i * 11) % 7) / 100), t * 0.66));
-    makeCollider?.(x, y, z, rot, scale, q);
+    makeCollider?.(x, y, z, rot, Array.isArray(scale) ? sv : scale, q);
   });
   mesh.castShadow = mesh.receiveShadow = true;
   scene.add(mesh);
@@ -500,24 +551,33 @@ async function addMeshyPieces(scene, physics, rand) {
     const side = rand() < 0.5 ? -1 : 1;
     rocks.push([roadX(z) + side * (4 + rand() * 3), z, rand() * 6.28, 0.7 + rand() * 0.9, 0.2, (rand() - 0.5) * 0.3]);
   }
-  // Rocks collide as a slightly shrunk box, which is cheap and stable.
-  const rb = boulder.box;
-  placeCopies(scene, boulder, rocks, (x, y, z, rot, s, q) => {
-    const hx = (rb.max.x - rb.min.x) * s * 0.4, hy = (rb.max.y - rb.min.y) * s * 0.45, hz = (rb.max.z - rb.min.z) * s * 0.4;
-    addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(hx, hy, hz), { x, y: y + hy, z }, q);
-  });
+  makeGranite(boulder);
+  placeCopies(scene, boulder, rocks, rockCollider(physics, boulder.box));
 
-  // Distant granite hills (kopjes): big stacked copies of the same boulder.
+  // Granite kopjes like the reference art: a skirt of wide, squashed boulders,
+  // stacked pillars above it and rounded blocks balanced on top. All solid.
   const hills = [];
   for (const [cx, cz] of [[-95, -60], [70, -105], [120, 20], [-120, 55], [30, 140], [-40, -130]]) {
-    for (let k = 0; k < 14; k++) {
-      const r = rand() * 18;
-      const a = rand() * 6.28;
-      const big = 6 + rand() * 9 - r * 0.25;
-      hills.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r, rand() * 6.28, big, 0.1 - (18 - r) * 0.02, (rand() - 0.5) * 0.5]);
+    for (let k = 0; k < 9; k++) { // base skirt
+      const a = (k / 9) * 6.28 + rand() * 0.5, r = 10 + rand() * 8;
+      const w = 5 + rand() * 4;
+      hills.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r, rand() * 6.28, [w, w * (0.45 + rand() * 0.3), w * (0.8 + rand() * 0.4)], 0.2, (rand() - 0.5) * 0.3]);
+    }
+    let top = 0;
+    for (let k = 0; k < 5; k++) { // core pillars, each sitting on the last
+      const a = rand() * 6.28, r = rand() * 5;
+      const w = 6 - k * 0.7 + rand() * 2;
+      const hgt = w * (0.9 + rand() * 0.6);
+      hills.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r, rand() * 6.28, [w, hgt, w * (0.8 + rand() * 0.3)], -top / hgt, (rand() - 0.5) * 0.25]);
+      top += (boulder.box.max.y - boulder.box.min.y) * hgt * 0.62;
+    }
+    for (let k = 0; k < 3; k++) { // balanced rocks on the summit
+      const a = rand() * 6.28, r = 1 + rand() * 3;
+      const w = 2.2 + rand() * 1.5;
+      hills.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r, rand() * 6.28, [w, w * 1.3, w], -top / (w * 1.3), (rand() - 0.5) * 0.4]);
     }
   }
-  placeCopies(scene, boulder, hills);
+  placeCopies(scene, boulder, hills, rockCollider(physics, boulder.box));
 
   // Village: thatched huts in a ring and tin-roof houses around the enterable house.
   const hutSpots = [[-14, -6, 0.6], [-9, -15, 0.2], [2, -17, 0], [13, -12, -0.5], [16, 2, -1.4], [-16, 6, 1.9], [9, 14, 3.4], [-22, -12, 1], [21, -6, 2]];

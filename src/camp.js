@@ -5,8 +5,10 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   CAMP, groundHeight, makeRandom, addFixedCollider, bakeModel, placeCopies, canvasTexture,
+  rockCollider, makeGranite,
 } from './world.js';
 
 const tarpTime = { value: 0 };
@@ -195,6 +197,79 @@ function buildFence(physics, sticks, ax, az, bx, bz) {
   addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(len / 2, 0.7, 0.1), W((ax + bx) / 2, 0.7, (az + bz) / 2), q);
 }
 
+// Jerry can: a ribbed steel body with a three-bar handle and a spout.
+function jerryCanGeometry() {
+  const parts = [];
+  const body = new THREE.BoxGeometry(0.17, 0.42, 0.34, 1, 1, 1);
+  body.translate(0, 0.21, 0);
+  parts.push(body);
+  for (const z of [-0.08, 0, 0.08]) {
+    const bar = new THREE.BoxGeometry(0.04, 0.09, 0.025);
+    bar.translate(0, 0.46, z);
+    parts.push(bar);
+  }
+  const grip = new THREE.BoxGeometry(0.04, 0.025, 0.2);
+  grip.translate(0, 0.5, 0);
+  parts.push(grip);
+  const spout = new THREE.CylinderGeometry(0.025, 0.025, 0.06, 8);
+  spout.translate(0, 0.45, 0.13);
+  parts.push(spout);
+  // X-shaped stiffening ribs on each face.
+  for (const side of [-1, 1]) {
+    for (const ang of [0.6, -0.6]) {
+      const rib = new THREE.BoxGeometry(0.01, 0.42, 0.02);
+      rib.rotateX(ang);
+      rib.translate(side * 0.088, 0.21, 0);
+      parts.push(rib);
+    }
+  }
+  return mergeGeometries(parts.map((g) => g.toNonIndexed()));
+}
+
+function addJerryCans(scene, physics, spots) {
+  const mesh = new THREE.InstancedMesh(
+    jerryCanGeometry(),
+    new THREE.MeshStandardMaterial({ color: '#56623a', roughness: 0.6, metalness: 0.3 }),
+    spots.length
+  );
+  const m = new THREE.Matrix4();
+  spots.forEach(([x, z, lift, rot], i) => {
+    const y = groundHeight(x, z) + lift;
+    m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(1, 1, 1));
+    mesh.setMatrixAt(i, m);
+    addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(0.09, 0.25, 0.17), { x, y: y + 0.25, z });
+  });
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+
+// Clay pots: a turned (lathe) profile with a rolled rim and painted bands.
+function addClayPots(scene, spots) {
+  const profile = [
+    [0.0, 0], [0.12, 0.01], [0.2, 0.08], [0.24, 0.2], [0.22, 0.32], [0.15, 0.4], [0.11, 0.44], [0.13, 0.47], [0.12, 0.49],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const geo = new THREE.LatheGeometry(profile, 16);
+  const map = canvasTexture(64, (g, n) => {
+    g.fillStyle = '#a9552c';
+    g.fillRect(0, 0, n, n);
+    g.fillStyle = 'rgba(60,25,10,0.35)';
+    g.fillRect(0, n * 0.3, n, 3);
+    g.fillRect(0, n * 0.42, n, 2);
+    for (let i = 0; i < 40; i++) {
+      g.fillStyle = `rgba(255,220,180,${Math.random() * 0.12})`;
+      g.fillRect(Math.random() * n, Math.random() * n, 3, 3);
+    }
+  });
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map, roughness: 0.9 }), spots.length);
+  const m = new THREE.Matrix4();
+  spots.forEach(([x, z, lift, size], i) => {
+    m.compose(new THREE.Vector3(x, groundHeight(x, z) + lift, z), new THREE.Quaternion(), new THREE.Vector3(size, size, size));
+    mesh.setMatrixAt(i, m);
+  });
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+
 export async function buildCamp(scene, physics) {
   const rand = makeRandom(31);
   const sticks = stickBuilder();
@@ -256,15 +331,30 @@ export async function buildCamp(scene, physics) {
   // Lichen-covered rocks around the clearing and small stones on the track,
   // all copies of the existing granite boulder.
   const rocks = [];
+  // Keep the mouth of the track (towards the village) open.
+  const trackDir = Math.atan2(48, -38);
   for (let i = 0; i < 18; i++) {
     const a = rand() * Math.PI * 2;
     const d = 13 + rand() * 6;
+    if (Math.abs(Math.atan2(Math.sin(a - trackDir), Math.cos(a - trackDir))) < 0.5) continue;
     rocks.push([Math.cos(a) * d, Math.sin(a) * d, rand() * 6.28, 0.8 + rand() * 1.4, 0.2, (rand() - 0.5) * 0.4]);
   }
+  makeGranite(boulder);
+  // Big rocks are solid; the small stones on the path can be walked over.
+  placeCopies(scene, boulder, rocks.map(toWorld), rockCollider(physics, boulder.box));
+  const stones = [];
   for (let i = 0; i < 26; i++) {
-    rocks.push([2 + rand() * 8, 1 + rand() * 9, rand() * 6.28, 0.08 + rand() * 0.14, 0.2, 0]);
+    stones.push([2 + rand() * 8, 1 + rand() * 9, rand() * 6.28, 0.08 + rand() * 0.14, 0.2, 0]);
   }
-  placeCopies(scene, boulder, rocks.map(toWorld));
+  placeCopies(scene, boulder, stones.map(toWorld));
+
+  // Olive jerry cans and clay pots, as in the reference picture.
+  const tableTop = (table.box.max.y - table.box.min.y) * 0.95;
+  const crateTop = crateH;
+  addJerryCans(scene, physics, [[12, 8, crateTop, 0.3], [9.8, -0.6, 0, 1.2], [-6.8, -6, 0, 0.4]].map(toWorld));
+  addClayPots(scene, [
+    [-1.3, 0.4, tableTop, 1], [-0.6, 0.7, tableTop, 0.7], [7.6, 2.4, 0, 1.3], [8.4, 2.8, 0, 0.9], [2.2, 0.2, 0, 1.1],
+  ].map(toWorld));
 
   return (dt) => { tarpTime.value += dt; };
 }
