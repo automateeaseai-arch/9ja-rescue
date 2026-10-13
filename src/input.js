@@ -7,6 +7,7 @@ export function createInput(canvas) {
     jump: false,     // consumed by the player each time it is read
     fire: false,     // held: aim and fire
     punch: false,    // consumed each time it is read
+    crouch: false,   // toggles crouching; consumed each time it is read
     lookDX: 0,       // accumulated look deltas in pixels, reset each frame
     lookDY: 0,
   };
@@ -18,6 +19,7 @@ export function createInput(canvas) {
     keys.add(e.code);
     if (e.code === 'Space') state.jump = true;
     if (e.code === 'KeyE' && !e.repeat) state.punch = true;
+    if (e.code === 'KeyC' && !e.repeat) state.crouch = true;
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
   // Desktop fire: hold F or the right mouse button.
@@ -113,6 +115,9 @@ export function createInput(canvas) {
   const punchBtn = document.getElementById('punch-btn');
   punchBtn.addEventListener('touchstart', (e) => { state.punch = true; e.preventDefault(); }, { passive: false });
   punchBtn.addEventListener('click', () => { state.punch = true; });
+  const crouchBtn = document.getElementById('crouch-btn');
+  crouchBtn.addEventListener('touchstart', (e) => { state.crouch = true; e.preventDefault(); }, { passive: false });
+  crouchBtn.addEventListener('click', () => { state.crouch = true; });
 
   return {
     isTouch,
@@ -128,6 +133,11 @@ export function createInput(canvas) {
       const d = { x: state.lookDX, y: state.lookDY };
       state.lookDX = state.lookDY = 0;
       return d;
+    },
+    consumeCrouch() {
+      const c = state.crouch;
+      state.crouch = false;
+      return c;
     },
     consumePunch() {
       const p = state.punch;

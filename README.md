@@ -61,6 +61,8 @@ All runtime GLBs are compressed for slow phone connections (WebP textures at 102
 
 All models face +Z, have their origin at the feet and use metres. Shared clips in `public/models/anims/Shared_Anims.glb` (121 KB, skeleton only): Idle, Walk_Forward_While_Shooting_inplace (used upper-body only as aim/fire) and Sit_Cross_Legged_on_Floor, from Meshy animation task `01a13412-067c-716c-9e81-5ff310512d61` on the Female Soldier rig (9 credits). They are retargeted to every character at runtime (rotations only, hip height scaled).
 
+Combat and movement clips in `public/models/anims/Combat_Anims.glb` (291 KB, skeleton only): Right_Jab_from_Guard (punch), Knock_Down (guard hit from the front), Shot_and_Fall_Forward (guard taken down from behind), Swim_Idle, Swim_Forward, Cautious_Crouch_Walk_Forward, CrouchLookAroundBow (crouch idle), climbing_up_wall. Meshy animation task `01a13562-44f5-76ca-80df-c401c679b078` (8 × 3 = 24 credits) on a fresh rig of the Female Soldier, `01a13561-eb82-75c4-92a3-b19eb0f45746` (5 credits; the old rig task had expired on Meshy). Retargeted the same way; falls keep their travel, the climb loop has its rise removed.
+
 ## Items register
 From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
 

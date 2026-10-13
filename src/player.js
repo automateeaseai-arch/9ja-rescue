@@ -97,7 +97,17 @@ export function loadCharacter(index) {
   return characterCache.get(index);
 }
 
-export async function createPlayer(scene, physics, spawn) {
+const CROUCH_SPEED = 1.2;
+const SWIM_SPEED = 1.1, SWIM_FAST = 2.0;
+const SWIM_DEPTH = 1.25;     // feet below the water surface while swimming
+const CLIMB_SPEED = 0.9;     // metres per second up a wall or rock
+const CLIMB_MIN = 1.0, CLIMB_MAX = 3.8; // ledge heights (above the feet) that can be climbed
+const PUNCH_RATE = 1.6;      // jab clip playback speed
+const PUNCH_STRIKE = 0.52;   // clip time (s) when the fist lands
+const PUNCH_LEN = 1.15;      // clip time (s) when the jab is back in guard
+
+// opts.waterAt(x, z) → { level, ground } where there is water, else null.
+export async function createPlayer(scene, physics, spawn, opts = {}) {
   const sharedAnims = await loadSharedAnims();
   const body = physics.createRigidBody(
     RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(spawn.x, spawn.y + FOOT_OFFSET + 0.2, spawn.z)
@@ -135,11 +145,12 @@ export async function createPlayer(scene, physics, spawn) {
   let airborne = false;
   let aim = 0;
   const airVel = new THREE.Vector3();
-  // Punch: a code-driven arm swing laid over whatever the legs are doing.
-  const PUNCH_TIME = 0.45, PUNCH_STRIKE = 0.13;
-  let punchT = -1;
+  let punchT = -1;            // clip time of the jab in progress, or -1
   let bones = {};
-  const state = { disabled: false, strike: false, aiming: false };
+  // mode: 'ground', 'swim' or 'climb'
+  const state = { disabled: false, strike: false, aiming: false, crouch: false, mode: 'ground' };
+  let crouchW = 0, swimMove = 0;
+  const climb = { top: 0, dir: new THREE.Vector3(), over: 0, dist: 0, moved: 0 };
 
   function setCharacter(entry) {
     if (model) root.remove(model);
@@ -154,19 +165,31 @@ export async function createPlayer(scene, physics, spawn) {
     const clips = entry.gltf.animations.map((c) => makeInPlace(c.clone()));
     const walk = clips.find((c) => c.name === 'Walk');
     const run = clips.find((c) => c.name === 'Run');
-    const idle = retarget(sharedAnims.idle, model);
-    const shoot = retarget(sharedAnims.shoot, model);
-    // Full-body locomotion, plus legs-only copies used while the arms shoot.
+    const A = sharedAnims;
+    const idle = retarget(A.idle, model);
+    const crouchIdle = retarget(A.crouchIdle, model);
+    const crouchWalk = retarget(A.crouchWalk, model);
+    // Full-body clips, plus legs-only copies used while the arms aim or punch.
     actions = {
       idle: mixer.clipAction(idle),
       walk: mixer.clipAction(walk),
       run: mixer.clipAction(run),
+      crouchIdle: mixer.clipAction(crouchIdle),
+      crouchWalk: mixer.clipAction(crouchWalk),
       idleLegs: mixer.clipAction(lowerBody(idle)),
       walkLegs: mixer.clipAction(lowerBody(walk)),
       runLegs: mixer.clipAction(lowerBody(run)),
-      shoot: mixer.clipAction(upperBody(shoot)),
+      crouchIdleLegs: mixer.clipAction(lowerBody(crouchIdle)),
+      crouchWalkLegs: mixer.clipAction(lowerBody(crouchWalk)),
+      shoot: mixer.clipAction(upperBody(retarget(A.shoot, model))),
+      punch: mixer.clipAction(upperBody(retarget(A.punch, model))),
+      swimIdle: mixer.clipAction(retarget(A.swimIdle, model)),
+      swimForward: mixer.clipAction(retarget(A.swimForward, model)),
+      climb: mixer.clipAction(retarget(A.climb, model, 'loopUp')),
     };
     for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
+    actions.punch.setLoop(THREE.LoopOnce);
+    actions.punch.clampWhenFinished = true;
     actions.idle.setEffectiveWeight(1);
   }
 
@@ -174,37 +197,40 @@ export async function createPlayer(scene, physics, spawn) {
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
 
-  // Turns `bone` so that its child points along world direction `dir`, by weight w.
-  const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion(), _qw = new THREE.Quaternion(), _qp = new THREE.Quaternion();
-  function pointBone(bone, child, dir, w) {
-    if (!bone || !child || w <= 0) return;
-    bone.getWorldPosition(_a);
-    child.getWorldPosition(_b);
-    _b.sub(_a).normalize();
-    _q.setFromUnitVectors(_b, dir);
-    bone.getWorldQuaternion(_qw).premultiply(_q);
-    bone.parent.getWorldQuaternion(_qp).invert();
-    bone.quaternion.slerp(_qp.multiply(_qw), w);
-    bone.updateMatrixWorld(true);
-  }
-  const punchDir = new THREE.Vector3();
-  const yAxis = new THREE.Vector3(0, 1, 0);
-  function punchPose(w) {
-    if (w <= 0 || !bones.RightArm) return;
-    model.updateMatrixWorld(true);
-    // Turn the chest so the right shoulder leads, then drive the arm out straight.
-    const sp = bones.Spine01;
-    if (sp) {
-      sp.getWorldQuaternion(_qw).premultiply(_q.setFromAxisAngle(yAxis, 0.45 * w));
-      sp.parent.getWorldQuaternion(_qp).invert();
-      sp.quaternion.copy(_qp.multiply(_qw));
-      sp.updateMatrixWorld(true);
+  // Is there a wall or rock ahead with a ledge on top that can be climbed?
+  const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  const cast = (o, d, len) => {
+    ray.origin = o;
+    ray.dir = d;
+    const hit = physics.castRay(ray, len, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+    return hit ? hit.timeOfImpact : null;
+  };
+  // Returns { top, over }: the ledge height and how far to move forward once
+  // up. A thick top (rock, roof) is stood on; a thin wall is climbed over and
+  // the player drops down the far side.
+  function findLedge(p, dir) {
+    const feet = p.y - FOOT_OFFSET;
+    const d = { x: dir.x, y: 0, z: dir.z };
+    const low = cast({ x: p.x, y: feet + 0.7, z: p.z }, d, 1.0);
+    const high = cast({ x: p.x, y: feet + 1.3, z: p.z }, d, 1.0);
+    if (low == null || high == null) return null;           // nothing tall in front
+    const wall = Math.min(low, high);
+    const topAt = (dist) => {
+      const x = p.x + dir.x * dist, z = p.z + dir.z * dist;
+      const down = cast({ x, y: feet + CLIMB_MAX + 0.3, z }, { x: 0, y: -1, z: 0 }, CLIMB_MAX + 1.5);
+      return down == null ? -Infinity : feet + CLIMB_MAX + 0.3 - down;
+    };
+    const top = topAt(wall + 0.12);
+    if (top - feet < CLIMB_MIN || top - feet > CLIMB_MAX) return null;
+    // Head room above the top.
+    if (cast({ x: p.x + dir.x * (wall + 0.12), y: top + 0.05, z: p.z + dir.z * (wall + 0.12) }, { x: 0, y: 1, z: 0 }, 1.0) != null) return null;
+    // Walk the top until it ends or there is room to stand.
+    for (let k = 0.3; k <= 1.5; k += 0.2) {
+      const h = topAt(wall + k);
+      if (h < top - 0.6) return { top, over: wall + k + 0.35 };   // thin wall: over and down
+      if (k >= 0.7) return { top, over: wall + 0.6 };              // wide enough to stand on
     }
-    punchDir.set(Math.sin(facing), 0, Math.cos(facing));
-    punchDir.y = 0.12;
-    punchDir.normalize();
-    pointBone(bones.RightArm, bones.RightForeArm, punchDir, w);
-    pointBone(bones.RightForeArm, bones.RightHand, punchDir, w);
+    return { top, over: wall + 0.6 };
   }
 
   const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _p = new THREE.Vector3(), _basis = new THREE.Matrix4();
@@ -243,92 +269,174 @@ export async function createPlayer(scene, physics, spawn) {
   function update(dt, input, cameraYaw, cameraPitch = 0.2) {
     const s = input.state;
     const mag = state.disabled ? 0 : Math.min(1, Math.hypot(s.moveX, s.moveY));
-    if (input.consumePunch?.() && punchT < 0 && !state.disabled) punchT = 0;
-    if (punchT >= 0) {
-      const before = punchT;
-      punchT += dt;
-      if (before < PUNCH_STRIKE && punchT >= PUNCH_STRIKE) state.strike = true;
-      if (punchT > PUNCH_TIME) punchT = -1;
-    }
+    const p = body.translation();
+    const feet = p.y - FOOT_OFFSET;
+
     // Movement is relative to where the camera is looking.
     forward.set(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw));
     right.set(-forward.z, 0, forward.x);
     move.set(0, 0, 0).addScaledVector(forward, s.moveY).addScaledVector(right, s.moveX);
     if (move.lengthSq() > 0) move.normalize();
 
-    const targetSpeed = mag < 0.05 ? 0 : (s.run ? RUN_SPEED : WALK_SPEED * Math.max(mag, 0.6));
+    // Water: swim where it is too deep to wade.
+    const water = opts.waterAt?.(p.x, p.z);
+    const depth = water ? water.level - water.ground : 0;
+    if (state.mode === 'ground' && depth > 1.3 && feet < water.level - 0.9) {
+      state.mode = 'swim';
+      controller.disableSnapToGround();
+    } else if (state.mode === 'swim' && depth < 1.1) {
+      state.mode = 'ground';
+      controller.enableSnapToGround(0.4);
+    }
+
+    const crouchPressed = input.consumeCrouch?.();
+    if (crouchPressed && state.mode === 'ground' && !state.disabled) state.crouch = !state.crouch;
+    if (state.mode !== 'ground' || (s.run && mag > 0.05)) state.crouch = false;
+    if (input.consumePunch?.() && punchT < 0 && !state.disabled && state.mode === 'ground') {
+      punchT = 0;
+      actions?.punch.reset().play();
+    }
+    if (punchT >= 0) {
+      const before = punchT;
+      punchT += dt * PUNCH_RATE;
+      if (before < PUNCH_STRIKE && punchT >= PUNCH_STRIKE) state.strike = true;
+      if (punchT > PUNCH_LEN) punchT = -1;
+    }
+
+    let targetSpeed = mag < 0.05 ? 0 : (s.run ? RUN_SPEED : WALK_SPEED * Math.max(mag, 0.6));
+    if (state.crouch && targetSpeed > 0) targetSpeed = CROUCH_SPEED * Math.max(mag, 0.6);
+    if (state.mode === 'swim' && targetSpeed > 0) targetSpeed = s.run ? SWIM_FAST : SWIM_SPEED;
     speed = THREE.MathUtils.damp(speed, targetSpeed, 10, dt);
 
-    if (grounded) {
-      vy = -1;
-      airVel.set(0, 0, 0);
-      if (input.consumeJump() && !state.disabled) {
-        vy = JUMP_SPEED;
-        // Launch forward in the direction of travel, or the way the character faces.
-        const dir = mag > 0.05 ? move.clone() : new THREE.Vector3(Math.sin(facing), 0, Math.cos(facing));
-        airVel.copy(dir).multiplyScalar(Math.max(speed * JUMP_FORWARD_BOOST, JUMP_FORWARD_MIN));
-        airborne = true;
+    const next = { x: p.x, y: p.y, z: p.z };
+    const jump = input.consumeJump() && !state.disabled;
+    if (state.mode === 'climb') {
+      // Up the wall, then step over onto the top.
+      if (climb.over === 0) {
+        next.y = Math.min(climb.top + FOOT_OFFSET + 0.05, p.y + CLIMB_SPEED * dt);
+        if (next.y >= climb.top + FOOT_OFFSET + 0.05) climb.over = 0.001;
+      } else {
+        climb.over += dt;
+        const step = Math.min(1.6 * dt, climb.dist - climb.moved);
+        climb.moved += step;
+        next.x += climb.dir.x * step;
+        next.z += climb.dir.z * step;
+        if (climb.moved >= climb.dist - 1e-3) { state.mode = 'ground'; vy = -1; grounded = false; }
       }
+    } else if (state.mode === 'swim') {
+      // Float with the head above the surface.
+      vy = THREE.MathUtils.clamp((water.level - SWIM_DEPTH - feet) * 4, -2, 2);
+      controller.computeColliderMovement(collider, { x: move.x * speed * dt, y: vy * dt, z: move.z * speed * dt });
+      const c = controller.computedMovement();
+      next.x += c.x; next.y += c.y; next.z += c.z;
+      grounded = false;
+      airborne = false;
     } else {
-      input.consumeJump();
-      vy += GRAVITY * dt;
+      if (grounded) {
+        vy = -1;
+        airVel.set(0, 0, 0);
+        if (jump) {
+          const dir = mag > 0.05 ? move.clone() : new THREE.Vector3(Math.sin(facing), 0, Math.cos(facing));
+          const ledge = findLedge(p, dir);
+          if (ledge) {
+            // Too high to jump: climb it.
+            state.mode = 'climb';
+            state.crouch = false;
+            climb.top = ledge.top;
+            climb.dir.copy(dir);
+            climb.over = 0;
+            climb.dist = ledge.over;
+            climb.moved = 0;
+            facing = Math.atan2(dir.x, dir.z);
+            speed = 0;
+          } else {
+            vy = JUMP_SPEED;
+            // Launch forward in the direction of travel, or the way the character faces.
+            airVel.copy(dir).multiplyScalar(Math.max(speed * JUMP_FORWARD_BOOST, JUMP_FORWARD_MIN));
+            airborne = true;
+          }
+        }
+      } else {
+        vy += GRAVITY * dt;
+      }
+      if (state.mode === 'ground') {
+        // In the air, momentum carries the jump; the stick only steers a little.
+        let vx = move.x * speed, vz = move.z * speed;
+        if (airborne) {
+          airVel.x += move.x * mag * 4 * dt;
+          airVel.z += move.z * mag * 4 * dt;
+          vx = airVel.x;
+          vz = airVel.z;
+        }
+        controller.computeColliderMovement(collider, { x: vx * dt, y: vy * dt, z: vz * dt });
+        const c = controller.computedMovement();
+        grounded = controller.computedGrounded();
+        if (grounded && vy <= 0) airborne = false;
+        next.x += c.x; next.y += c.y; next.z += c.z;
+      }
     }
-
-    // In the air, momentum carries the jump; the stick only steers a little.
-    let vx = move.x * speed, vz = move.z * speed;
-    if (airborne) {
-      airVel.x += move.x * mag * 4 * dt;
-      airVel.z += move.z * mag * 4 * dt;
-      vx = airVel.x;
-      vz = airVel.z;
-    }
-    const desired = { x: vx * dt, y: vy * dt, z: vz * dt };
-    controller.computeColliderMovement(collider, desired);
-    const corrected = controller.computedMovement();
-    grounded = controller.computedGrounded();
-    if (grounded && vy <= 0) airborne = false;
-    const p = body.translation();
-    const next = { x: p.x + corrected.x, y: p.y + corrected.y, z: p.z + corrected.z };
     if (next.y < -30) { next.x = 0; next.y = 5; next.z = 12; vy = 0; } // fell out of the world
     body.setNextKinematicTranslation(next);
 
     // Visuals follow the physics body.
     root.position.set(next.x, next.y - FOOT_OFFSET, next.z);
     // While aiming, the character turns to face where the camera looks.
-    state.aiming = s.fire && !state.disabled;
-    if (state.aiming || mag > 0.05) {
+    state.aiming = s.fire && !state.disabled && state.mode === 'ground';
+    if (state.mode !== 'climb' && (state.aiming || mag > 0.05)) {
       const targetFacing = state.aiming ? Math.atan2(forward.x, forward.z) : Math.atan2(move.x, move.z);
       let diff = targetFacing - facing;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      facing += diff * Math.min(1, dt * 12);
+      facing += diff * Math.min(1, dt * (state.mode === 'swim' ? 5 : 12));
     }
     root.rotation.y = facing;
 
+    if (mixer) animate(dt);
     if (mixer) {
-      const walkW = THREE.MathUtils.clamp(speed / WALK_SPEED, 0, 1) *
-        (1 - THREE.MathUtils.clamp((speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1));
-      const runW = THREE.MathUtils.clamp((speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1);
-      const idleW = Math.max(0, 1 - walkW - runW);
-      // Holding fire raises the rifle: the arms play the shooting clip while
-      // the legs keep standing, walking or running.
-      aim = THREE.MathUtils.damp(aim, state.aiming && punchT < 0 ? 1 : 0, 12, dt);
-      actions.idle.setEffectiveWeight(idleW * (1 - aim));
-      actions.walk.setEffectiveWeight(walkW * (1 - aim));
-      actions.run.setEffectiveWeight(runW * (1 - aim));
-      actions.idleLegs.setEffectiveWeight(idleW * aim);
-      actions.walkLegs.setEffectiveWeight(walkW * aim);
-      actions.runLegs.setEffectiveWeight(runW * aim);
-      actions.shoot.setEffectiveWeight(aim);
-      for (const k of ['walk', 'walkLegs']) actions[k].timeScale = Math.max(0.6, speed / WALK_SPEED);
-      for (const k of ['run', 'runLegs']) actions[k].timeScale = Math.max(0.7, speed / RUN_SPEED);
-      mixer.update(dt);
-      if (punchT >= 0) {
-        const t = punchT;
-        punchPose(t < PUNCH_STRIKE ? t / PUNCH_STRIKE : t < 0.2 ? 1 : 1 - (t - 0.2) / (PUNCH_TIME - 0.2));
-      }
       model.updateMatrixWorld(true);
       updateRifle(cameraPitch);
     }
+  }
+
+  const ALL = ['idle', 'walk', 'run', 'crouchIdle', 'crouchWalk', 'idleLegs', 'walkLegs', 'runLegs', 'crouchIdleLegs',
+    'crouchWalkLegs', 'shoot', 'punch', 'swimIdle', 'swimForward', 'climb'];
+  const W = {};
+  function animate(dt) {
+    for (const k of ALL) W[k] = 0;
+    const clamp01 = (v) => THREE.MathUtils.clamp(v, 0, 1);
+    crouchW = THREE.MathUtils.damp(crouchW, state.crouch ? 1 : 0, 10, dt);
+    aim = THREE.MathUtils.damp(aim, state.aiming && punchT < 0 ? 1 : 0, 12, dt);
+    swimMove = THREE.MathUtils.damp(swimMove, state.mode === 'swim' && speed > 0.3 ? 1 : 0, 4, dt);
+    // Swimming forward lies flat: lift the body to the surface.
+    model.position.y = state.mode === 'swim' ? swimMove * 0.7 : 0;
+    if (state.mode === 'climb') {
+      W.climb = 1;
+      actions.climb.timeScale = climb.over ? 0.6 : CLIMB_SPEED / 0.47;
+    } else if (state.mode === 'swim') {
+      W.swimIdle = 1 - swimMove;
+      W.swimForward = swimMove;
+      actions.swimForward.timeScale = Math.max(0.8, speed / 0.55);
+    } else {
+      const runW = clamp01((speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED));
+      const walkW = clamp01(speed / (state.crouch ? CROUCH_SPEED : WALK_SPEED)) * (1 - runW);
+      const idleW = Math.max(0, 1 - walkW - runW);
+      // Punch: the jab clip fades in and out on the arms.
+      const punchW = punchT < 0 ? 0 : Math.min(1, punchT / 0.15, (PUNCH_LEN - punchT) / 0.3);
+      const upper = Math.min(1, aim + punchW); // arms busy: the legs carry on alone
+      const body = { idle: idleW * (1 - crouchW), walk: walkW * (1 - crouchW), run: runW * (1 - crouchW),
+        crouchIdle: idleW * crouchW, crouchWalk: (walkW + runW) * crouchW };
+      for (const [k, w] of Object.entries(body)) {
+        W[k] = w * (1 - upper);
+        W[k + 'Legs'] = w * upper;
+      }
+      W.shoot = aim * (1 - punchW);
+      W.punch = punchW;
+      actions.walk.timeScale = actions.walkLegs.timeScale = Math.max(0.6, speed / WALK_SPEED);
+      actions.run.timeScale = actions.runLegs.timeScale = Math.max(0.7, speed / RUN_SPEED);
+      actions.crouchWalk.timeScale = actions.crouchWalkLegs.timeScale = Math.max(0.6, speed / 1.3);
+      actions.punch.timeScale = PUNCH_RATE;
+    }
+    for (const k of ALL) actions[k].setEffectiveWeight(W[k]);
+    mixer.update(dt);
   }
 
   const _m = new THREE.Vector3();
@@ -336,9 +444,15 @@ export async function createPlayer(scene, physics, spawn) {
   return {
     root,
     setCharacter,
-    teleport(x, y, z) { body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true); },
+    teleport(x, y, z) {
+      body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true);
+      state.mode = 'ground';
+      controller.enableSnapToGround(0.4);
+    },
     update,
     get position() { return root.position; },
+    get crouching() { return state.crouch; },
+    findLedge: (dir) => findLedge(body.translation(), dir),
     get facing() { return facing; },
     get speed() { return speed; },
     get aimWeight() { return aim; },

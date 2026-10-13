@@ -2,12 +2,15 @@
 // at the valley compound (guard posts passed in `opts.spots`).
 //
 // Guards stand at their post looking around. They only notice the player
-// in front of them (a 120° view cone, clear line of sight, within 28 m);
+// in front of them (a 120° view cone, clear line of sight, within 28 m, or
+// 14 m while the player crouches);
 // noticing takes a moment, shown by "?" turning to "!". Anyone behind them
 // goes unseen, so they can be taken down with a punch from behind. Once
 // alerted they chase, stop with a clear shot and fire in bursts; if they lose
 // the player they search the last place they saw them, then go back to their
-// post. Each has a capsule collider and walks with a character controller,
+// post. When a guard is hit, every guard within 12 m is alerted at once and
+// attacks too. Knocked-out guards play Meshy's knock-down (hit from the
+// front) or fall-forward (from behind) clip. Each has a capsule collider and walks with a character controller,
 // so they can't pass through walls, rocks or the player.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -31,6 +34,8 @@ const HOSTILES = [
 
 export const VIEW_RANGE = 28;              // metres
 export const VIEW_COS = Math.cos(THREE.MathUtils.degToRad(60)); // half-angle of the view cone
+const CROUCH_VIEW = 0.5;                   // crouching halves how far away they notice the player
+const ALERT_RADIUS = 12;                   // a hit alerts every guard this close
 const SHOOT_RANGE = 16;                    // stop and shoot within this distance
 const WALK = 1.6, RUN = 4.0;               // the player runs at 5, so they can be outrun
 const ACTIVE_RANGE = 140;                  // guards further away are frozen (saves work)
@@ -88,8 +93,11 @@ export function spawnHostiles(scene, opts = {}) {
           aim: mixer.clipAction(upperBody(retarget(shared.shoot, model))),
           walk: mixer.clipAction(makeInPlace(clip('Walk').clone())),
           run: mixer.clipAction(makeInPlace(clip('Run').clone())),
+          knockDown: mixer.clipAction(retarget(shared.knockDown, model, 'keep')),
+          fallForward: mixer.clipAction(retarget(shared.fallForward, model, 'keep')),
         };
         for (const act of Object.values(a)) { act.play(); act.setEffectiveWeight(0); }
+        for (const act of [a.knockDown, a.fallForward]) { act.stop(); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; }
         a.idle.setEffectiveWeight(1);
         a.idle.time = (i * 0.37) % a.idle.getClip().duration;
         let hand = null;
@@ -137,11 +145,12 @@ export function spawnHostiles(scene, opts = {}) {
     return clearLine(eye, chest);
   }
 
+  let viewK = 1;
   // Is the player inside this guard's view cone (ignoring walls)?
   function inFront(u, playerPos) {
     toP.subVectors(playerPos, u.model.position).setY(0);
     const d = toP.length();
-    if (d > VIEW_RANGE) return false;
+    if (d > VIEW_RANGE * viewK) return false;
     if (d < 0.01) return true;
     const yaw = u.model.rotation.y;
     return (Math.sin(yaw) * toP.x + Math.cos(yaw) * toP.z) / d > VIEW_COS;
@@ -156,6 +165,13 @@ export function spawnHostiles(scene, opts = {}) {
     u.lastSeen.copy(playerPos);
   }
 
+  // Every other guard close by hears it and comes for the player.
+  function alertNearby(u, playerPos) {
+    for (const o of units) {
+      if (o !== u && o.state !== 'down' && o.model.position.distanceTo(u.model.position) < ALERT_RADIUS) alert(o, playerPos);
+    }
+  }
+
   function knockOut(u, fromPos) {
     u.state = 'down';
     u.health = 0;
@@ -163,8 +179,14 @@ export function spawnHostiles(scene, opts = {}) {
     // Fall away from the blow: forwards if hit from behind, backwards if from the front.
     toP.subVectors(fromPos, u.model.position);
     const yaw = u.model.rotation.y;
-    u.fallDir = Math.sin(yaw) * toP.x + Math.cos(yaw) * toP.z > 0 ? -1 : 1;
+    const fromFront = Math.sin(yaw) * toP.x + Math.cos(yaw) * toP.z > 0;
+    u.model.rotation.x = 0;
+    for (const act of Object.values(u.a)) act.setEffectiveWeight(0);
+    const fall = fromFront ? u.a.knockDown : u.a.fallForward;
+    fall.reset().play();
+    fall.setEffectiveWeight(1);
     u.mark.visible = false;
+    alertNearby(u, fromPos);
     physics.removeRigidBody(u.body); // the player can step over them
     u.body = null;
   }
@@ -230,16 +252,12 @@ export function spawnHostiles(scene, opts = {}) {
   function update(dt, player) {
     const pp = player.position;
     const playerDown = player.state.disabled;
+    viewK = player.crouching ? CROUCH_VIEW : 1;
     for (const u of units) {
       const dist = u.model.position.distanceTo(pp);
       if (u.state === 'down') {
-        // Topple over, then stay still.
-        if (u.fall < 1) {
-          u.fall = Math.min(1, u.fall + dt * 1.6);
-          const e = u.fall * u.fall;
-          u.model.rotation.x = u.fallDir * e * Math.PI * 0.48;
-          u.mixer.update(dt);
-        }
+        // Play the fall once, then stay still.
+        if (u.fall < 3) { u.fall += dt; u.mixer.update(dt); }
         continue;
       }
       const active = dist < ACTIVE_RANGE;
@@ -344,6 +362,7 @@ export function spawnHostiles(scene, opts = {}) {
       u.flinch = 1;
       u.stagger = 0.5;
       alert(u, fromPos);
+      alertNearby(u, fromPos);
     },
     knockOut,
     // A takedown works on a guard who hasn't noticed the player and is

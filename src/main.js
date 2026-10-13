@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { buildWorld, groundHeight, roadX } from './world.js';
+import { buildWorld, groundHeight, roadX, riverX, riverLevel, RIVER_HALF_WIDTH } from './world.js';
 import { createPlayer, loadCharacter, CHARACTERS, downloadStats } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
@@ -84,11 +84,25 @@ async function start() {
   }
   const input = createInput(canvas);
 
+  // Water surface where the player may swim: the valley river and lake, and
+  // the savanna river (too shallow to swim, so it is only waded).
+  const vShape = prepared.shape;
+  function waterAt(x, z) {
+    const lx = x - VALLEY_ORIGIN.x, lz = z - VALLEY_ORIGIN.z;
+    let level = null;
+    if (Math.abs(lx) < VL.HALF && Math.abs(lz) < VL.HALF) {
+      const r = vShape.riverInfo(lx, lz);
+      if (r.d < r.hw) level = r.level;
+      else if (vShape.lakeR(lx, lz) < 1) level = VL.LAKE.level;
+    } else if (Math.abs(x - riverX(z)) < RIVER_HALF_WIDTH) level = riverLevel(z);
+    return level == null ? null : { level, ground: land.height(x, z) };
+  }
+
   await step('Loading character');
   loadingFill.style.width = '60%';
   // Arrival point: on the dirt road south of the village, facing it.
   const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
-  const player = await createPlayer(scene, physics, spawn);
+  const player = await createPlayer(scene, physics, spawn, { waterAt });
   let charIndex = 0;
   player.setCharacter(await loadCharacter(charIndex));
   loadingFill.style.width = '100%';
@@ -130,6 +144,7 @@ async function start() {
     }),
   ];
   const objective = document.querySelector('#hud .objective');
+  const crouchBtn = document.getElementById('crouch-btn');
   const fx = createFx(scene);
   let combat = null;
   const hostiles = spawnHostiles(scene, {
@@ -180,6 +195,7 @@ async function start() {
     document.getElementById('jump-btn').hidden = false;
     document.getElementById('fire-btn').hidden = false;
     document.getElementById('punch-btn').hidden = false;
+    document.getElementById('crouch-btn').hidden = false;
   }
 
   // The valley is far from the start, so it is built while the player begins.
@@ -272,6 +288,7 @@ async function start() {
     updateCamp(dt);
     hostiles.update(dt, player);
     combat.update(dt);
+    crouchBtn.classList.toggle('on', player.crouching);
     pickups.update(dt, player);
     hostages.update(dt, player);
     updateDss(dt, player);
@@ -285,7 +302,8 @@ async function start() {
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
-      const idle = { state: move, consumeJump: () => false, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
+      const idle = { state: move, consumeJump: () => { const j = !!move.jump; move.jump = false; return j; },
+        consumeCrouch: () => { const c = !!move.crouch; move.crouch = false; return c; }, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
       for (let i = 0; i < seconds * 60; i++) {
         player.update(FIXED, idle, yaw, pitch);
         physics.step();

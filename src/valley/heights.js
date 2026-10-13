@@ -189,7 +189,7 @@ export function createValleyShape() {
     const e = ellipseR(x, z, L.LAKE);
     if (e < 1.6) {
       const isl = Math.max(0, fbm2(x * 0.045 + 3, z * 0.045) - 0.56) * 6;
-      const bed = L.LAKE.level - 1.1 + isl;
+      const bed = L.LAKE.level - 1.9 + isl; // deep enough to swim in open water
       const lakeH = lerp(bed, L.LAKE.level + 0.45, smooth(e, 0.86, 1.0)) + Math.max(0, e - 1) * 12;
       h = Math.min(h, lakeH);
     }
