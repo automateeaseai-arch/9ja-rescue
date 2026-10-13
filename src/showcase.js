@@ -1,21 +1,16 @@
 // Meshy models from the owner's pictures, placed in the world to be seen
-// (not usable yet): a pickup truck and a motorbike parked by the arrival
-// road, a hang glider at the valley viewpoint over the gorge, and a
+// (not usable yet): a hang glider at the valley viewpoint over the gorge, and a
 // parachute drifting down over the savanna (it lands, then starts again).
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
 
 const MODELS = {
-  truck: { url: 'models/vehicles/Pickup_Truck.glb', scale: 2.8 },   // about 5.3 m long
-  bike: { url: 'models/vehicles/Motorbike.glb', scale: 1.15 },      // about 2.2 m long
   glider: { url: 'models/items/Hang_Glider.glb', scale: 5.0 },      // about 9.5 m wingspan
   parachute: { url: 'models/items/Parachute.glb', scale: 4.0 },     // canopy about 7.5 m wide
 };
-// Like the SUV and van, the vehicles' fronts point along the model's -X.
-const FACE_NORTH = -Math.PI / 2;
 
-// spots: { truck: [x, z, yaw], bike: [x, z, yaw], glider: [x, z, yaw], parachute: [x, z] } in world coordinates.
+// spots: { glider: [x, z, yaw], parachute: [x, z] } in world coordinates.
 export function createShowcase(scene, physics, { spots, heightAt }) {
   const objs = {};
   const solid = (obj, x, y, z, yaw) => {
@@ -27,7 +22,7 @@ export function createShowcase(scene, physics, { spots, heightAt }) {
       .setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw)));
     physics.createCollider(RAPIER.ColliderDesc.cuboid(local.x / 2 * 0.95, size.y / 2, local.z / 2 * 0.95), body);
   };
-  const place = (name, [x, z, yaw = 0], { lean = 0, collide = true } = {}) => loadGlb(MODELS[name].url).then((gltf) => {
+  const place = (name, [x, z, yaw = 0], { collide = true } = {}) => loadGlb(MODELS[name].url).then((gltf) => {
     const o = gltf.scene;
     o.scale.setScalar(MODELS[name].scale);
     o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
@@ -35,14 +30,10 @@ export function createShowcase(scene, physics, { spots, heightAt }) {
     o.position.set(x, y, z);
     o.rotation.set(0, yaw, 0);
     if (collide) solid(o, x, y, z, yaw);
-    o.rotation.order = 'YXZ';
-    o.rotation.x = lean;  // the bike leans on its stand (its length runs along local X)
     scene.add(o);
     objs[name] = o;
   }).catch((err) => console.error(err));
 
-  place('truck', [spots.truck[0], spots.truck[1], FACE_NORTH + (spots.truck[2] ?? 0)]);
-  place('bike', [spots.bike[0], spots.bike[1], FACE_NORTH + (spots.bike[2] ?? 0)], { lean: 0.12 });
   place('glider', spots.glider);
   place('parachute', [spots.parachute[0], spots.parachute[1], 0], { collide: false });
 

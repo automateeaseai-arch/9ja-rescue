@@ -9,6 +9,7 @@ export function createInput(canvas) {
     punch: false,    // consumed each time it is read
     crouch: false,   // toggles crouching; consumed each time it is read
     throw: false,    // throws a grenade; consumed each time it is read
+    drive: false,    // gets in or out of a vehicle; consumed each time it is read
     lookDX: 0,       // accumulated look deltas in pixels, reset each frame
     lookDY: 0,
   };
@@ -22,6 +23,7 @@ export function createInput(canvas) {
     if (e.code === 'KeyE' && !e.repeat) state.punch = true;
     if (e.code === 'KeyC' && !e.repeat) state.crouch = true;
     if (e.code === 'KeyG' && !e.repeat) state.throw = true;
+    if (e.code === 'KeyV' && !e.repeat) state.drive = true;
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
   // Desktop fire: hold F or the right mouse button.
@@ -117,6 +119,9 @@ export function createInput(canvas) {
   const punchBtn = document.getElementById('punch-btn');
   punchBtn.addEventListener('touchstart', (e) => { state.punch = true; e.preventDefault(); }, { passive: false });
   punchBtn.addEventListener('click', () => { state.punch = true; });
+  const driveBtn = document.getElementById('drive-btn');
+  driveBtn.addEventListener('touchstart', (e) => { state.drive = true; e.preventDefault(); }, { passive: false });
+  driveBtn.addEventListener('click', () => { state.drive = true; });
   const throwBtn = document.getElementById('throw-btn');
   throwBtn.addEventListener('touchstart', (e) => { state.throw = true; e.preventDefault(); }, { passive: false });
   throwBtn.addEventListener('click', () => { state.throw = true; });
@@ -137,6 +142,11 @@ export function createInput(canvas) {
     consumeLook() {
       const d = { x: state.lookDX, y: state.lookDY };
       state.lookDX = state.lookDY = 0;
+      return d;
+    },
+    consumeDrive() {
+      const d = state.drive;
+      state.drive = false;
       return d;
     },
     consumeThrow() {

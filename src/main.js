@@ -9,6 +9,7 @@ import { createCombat } from './combat.js';
 import { createPickups } from './pickups.js';
 import { createGrenades } from './grenades.js';
 import { createShowcase } from './showcase.js';
+import { createVehicles } from './vehicles.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
@@ -186,12 +187,17 @@ async function start() {
   ];
   grenades = createGrenades({ scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer: (n) => combat.hurt(n) });
   const throwBtn = document.getElementById('throw-btn');
-  // New Meshy models on show: pickup and motorbike by the arrival road, hang
-  // glider at the valley viewpoint, a parachute drifting down over the savanna.
+  // Drivable pickup truck and motorbike, parked by the arrival road facing north.
+  const vehicles = createVehicles({
+    scene, physics, player, hostiles, heightAt: surfaceAt, waterAt,
+    spots: { truck: [roadX(52) + 3.6, 52, Math.PI - 0.1], bike: [roadX(42) - 3.2, 42, Math.PI + 0.3] },
+  });
+  const driveBtn = document.getElementById('drive-btn');
+  const promptEl = document.getElementById('prompt');
+  // On show: hang glider at the valley viewpoint, a parachute drifting down over the savanna.
   const updateShowcase = createShowcase(scene, physics, {
     heightAt: surfaceAt,
     spots: {
-      truck: [roadX(46) + 6, 46, 0.15], bike: [roadX(40) - 4.5, 40, -0.3],
       glider: [...toWorld([VL.VIEWPOINT.x + 4, VL.VIEWPOINT.z + 6]), 0.6], parachute: [roadX(70) + 25, 70],
     },
   });
@@ -227,6 +233,7 @@ async function start() {
   let pitch = 0.25;
   const CAM_DIST = 4.2;
   let camDist = CAM_DIST;
+  let lastCar = null;
   const head = new THREE.Vector3();
   const camOffset = new THREE.Vector3();
   const camTarget = new THREE.Vector3();
@@ -237,7 +244,18 @@ async function start() {
     yaw -= look.x * 0.004;
     pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003, -0.5, 1.1);
 
-    head.copy(player.position).add({ x: 0, y: 1.6, z: 0 });
+    const car = vehicles.driving;
+    // Getting in: start looking from behind the vehicle.
+    if (car && car !== lastCar) { yaw = car.heading + Math.PI; pitch = 0.3; }
+    lastCar = car;
+    if (car) {
+      // Swing round behind the vehicle while it moves, unless the player is looking around.
+      if (Math.abs(car.speed) > 1 && Math.abs(look.x) < 1) {
+        const target = car.heading + Math.PI + (car.speed < 0 ? Math.PI : 0);
+        yaw += Math.atan2(Math.sin(target - yaw), Math.cos(target - yaw)) * Math.min(1, (dt || 0.016) * 2.5);
+      }
+      head.copy(car.pos).add({ x: 0, y: car.T.camHeight - car.half.h, z: 0 });
+    } else head.copy(player.position).add({ x: 0, y: 1.6, z: 0 });
     camOffset.set(
       Math.sin(yaw) * Math.cos(pitch),
       Math.sin(pitch),
@@ -246,18 +264,19 @@ async function start() {
     // Pull the camera in if a wall or rock is between it and the player.
     ray.origin = { x: head.x, y: head.y, z: head.z };
     ray.dir = { x: camOffset.x, y: camOffset.y, z: camOffset.z };
-    const hit = physics.castRay(ray, CAM_DIST, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
-    // Closer over the shoulder while aiming.
-    camDist = THREE.MathUtils.damp(camDist, player.state.aiming ? 2.8 : CAM_DIST, 8, dt || 1);
+    const hit = physics.castRay(ray, car ? car.T.camDist : CAM_DIST, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+    // Closer over the shoulder while aiming; further back in a vehicle.
+    camDist = THREE.MathUtils.damp(camDist, car ? car.T.camDist : player.state.aiming ? 2.8 : CAM_DIST, 8, dt || 1);
     const dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
 
     camera.position.copy(head).addScaledVector(camOffset, dist);
-    // Slight over-the-shoulder offset to the right.
-    camera.position.x += Math.cos(yaw) * 0.5;
-    camera.position.z -= Math.sin(yaw) * 0.5;
+    // Slight over-the-shoulder offset to the right (centred in a vehicle).
+    const side = car ? 0 : 0.5;
+    camera.position.x += Math.cos(yaw) * side;
+    camera.position.z -= Math.sin(yaw) * side;
     camTarget.copy(head);
-    camTarget.x += Math.cos(yaw) * 0.5;
-    camTarget.z -= Math.sin(yaw) * 0.5;
+    camTarget.x += Math.cos(yaw) * side;
+    camTarget.z -= Math.sin(yaw) * side;
     camera.lookAt(camTarget);
     // Grenade blasts shake the camera.
     const sh = grenades?.shake ?? 0;
@@ -288,6 +307,7 @@ async function start() {
     input.update();
     acc += dt;
     while (acc >= FIXED) {
+      vehicles.update(FIXED, input);
       player.update(FIXED, input, yaw, pitch);
       physics.step();
       acc -= FIXED;
@@ -316,6 +336,17 @@ async function start() {
     grenades.update(dt);
     updateShowcase(dt);
     throwBtn.classList.toggle('wait', !grenades.ready);
+    // Get in / get out: prompt on a computer, a button on phones.
+    const canDrive = !!(vehicles.near || vehicles.driving);
+    if (vehicles.near && !vehicles.driving && !input.isTouch) {
+      promptEl.hidden = false;
+      promptEl.textContent = `V: ${vehicles.near.kind === 'bike' ? 'ride the motorbike' : 'drive the pickup'}`;
+    }
+    driveBtn.hidden = !(input.isTouch && canDrive);
+    driveBtn.textContent = vehicles.driving ? 'Get out' : 'Drive';
+    for (const id of ['fire-btn', 'punch-btn', 'crouch-btn', 'throw-btn', 'jump-btn']) {
+      if (input.isTouch) document.getElementById(id).hidden = !!vehicles.driving;
+    }
     hostages.update(dt, player);
     updateDss(dt, player);
     updateValleyExtraction(dt, player);
@@ -324,14 +355,16 @@ async function start() {
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades, showcase: updateShowcase,
+    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades, showcase: updateShowcase, vehicles,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
       const idle = { state: move, consumeJump: () => { const j = !!move.jump; move.jump = false; return j; },
+        consumeDrive: () => { const d = !!move.drive; move.drive = false; return d; },
         consumeThrow: () => { const t = !!move.throw; move.throw = false; return t; },
         consumeCrouch: () => { const c = !!move.crouch; move.crouch = false; return c; }, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
       for (let i = 0; i < seconds * 60; i++) {
+        vehicles.update(FIXED, idle);
         player.update(FIXED, idle, yaw, pitch);
         physics.step();
         updateScene(FIXED);

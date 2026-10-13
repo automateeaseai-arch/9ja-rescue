@@ -273,7 +273,33 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     }
   }
 
+  // Riding a vehicle: the vehicles module places the player at the seat each step.
+  let ride = null;
+  const RIDE_POSE = { clip: 'crouchWalk', time: 0.3 }; // knees bent, hands forward: sits on the bike
+  function updateRide(dt, input, cameraPitch) {
+    for (const f of ['consumeJump', 'consumePunch', 'consumeThrow', 'consumeCrouch']) input[f]?.();
+    state.aiming = false;
+    state.crouch = false;
+    speed = 0;
+    body.setNextKinematicTranslation({ x: ride.pos.x, y: ride.pos.y + FOOT_OFFSET, z: ride.pos.z });
+    root.position.copy(ride.pos);
+    facing = ride.heading;
+    root.visible = ride.show;
+    if (ride.quat) root.quaternion.copy(ride.quat); else root.rotation.set(0, facing, 0);
+    if (!mixer) return;
+    for (const k of ALL) actions[k].setEffectiveWeight(0);
+    const a = actions[RIDE_POSE.clip];
+    a.setEffectiveWeight(1);
+    a.time = RIDE_POSE.time;
+    a.timeScale = 0;
+    mixer.update(dt);
+    model.position.y = 0;
+    model.updateMatrixWorld(true);
+    updateRifle(cameraPitch);
+  }
+
   function update(dt, input, cameraYaw, cameraPitch = 0.2) {
+    if (state.mode === 'drive') { updateRide(dt, input, cameraPitch); return; }
     const s = input.state;
     const mag = state.disabled ? 0 : Math.min(1, Math.hypot(s.moveX, s.moveY));
     const p = body.translation();
@@ -465,6 +491,22 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   return {
     root,
     setCharacter,
+    // Called by the vehicles module every step while driving.
+    ride(seat) {
+      if (state.mode !== 'drive') {
+        state.mode = 'drive';
+        collider.setEnabled(false);
+        punchT = throwT = -1;
+      }
+      ride = seat;
+    },
+    leaveRide(x, y, z) {
+      ride = null;
+      collider.setEnabled(true);
+      root.visible = true;
+      root.rotation.set(0, facing, 0);
+      this.teleport(x, y, z);
+    },
     teleport(x, y, z) {
       body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true);
       state.mode = 'ground';
