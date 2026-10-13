@@ -4,6 +4,8 @@ import { buildWorld, groundHeight, roadX } from './world.js';
 import { createPlayer, loadCharacter, CHARACTERS, downloadStats } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
+import { createFx } from './fx.js';
+import { createCombat } from './combat.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
@@ -116,12 +118,31 @@ async function start() {
   // southern five at the compound.
   const toWorld = ([x, z]) => [x + VALLEY_ORIGIN.x, z + VALLEY_ORIGIN.z];
   const hostageSpots = [...CAMP_SPOTS.slice(0, 5), ...[0, 1, 2, 6, 7].map((i) => toWorld(VL.HOSTAGE_SPOTS[i]))];
+  // Each guard faces a different way: the savanna five watch every side of
+  // the village; valley guards face out from the compound.
+  const SAV_YAWS = [0, Math.PI / 2, Math.PI, -Math.PI / 2, 0.8];
   const hostileSpots = [
-    ...[0, 1, 2, 3, 4].map((i) => [-6 + i * 3, 6]),
-    ...[0, 1, 2, 3, 5].map((i) => toWorld(VL.HOSTILE_SPOTS[i])),
+    ...[0, 1, 2, 3, 4].map((i) => [-6 + i * 3, 6, SAV_YAWS[i]]),
+    ...[0, 1, 2, 3, 5].map((i) => {
+      const [x, z] = VL.HOSTILE_SPOTS[i];
+      return [...toWorld([x, z]), Math.atan2(x - VL.COMPOUND.x, z - VL.COMPOUND.z)];
+    }),
   ];
   const objective = document.querySelector('#hud .objective');
-  const updateHostiles = spawnHostiles(scene, { spots: hostileSpots, heightAt: surfaceAt });
+  const fx = createFx(scene);
+  let combat = null;
+  const hostiles = spawnHostiles(scene, {
+    spots: hostileSpots, heightAt: surfaceAt, physics, fx,
+    onShootPlayer: (damage) => combat?.hurt(damage),
+  });
+  // Knocked out: back on your feet at the savanna road, or the valley's north road.
+  const valleyStart = toWorld(VL.ROUTES.northRoad[2]);
+  combat = createCombat({
+    physics, camera, player, hostiles, fx, isTouch: input.isTouch,
+    respawnPoint: () => (player.position.z > 300
+      ? new THREE.Vector3(valleyStart[0], land.height(...valleyStart), valleyStart[1])
+      : spawn.clone()),
+  });
   objective.textContent = 'Hostages are held in the camp north-east of the village and in the plantation compound in the river valley to the south';
   const hostages = spawnHostages(scene, (name) => {
     objective.textContent = `${name} is following you. Take them to DSS: the vehicles by the river west of the village, or the jetty or vans in the valley`;
@@ -145,6 +166,7 @@ async function start() {
   if (input.isTouch) {
     document.getElementById('jump-btn').hidden = false;
     document.getElementById('fire-btn').hidden = false;
+    document.getElementById('punch-btn').hidden = false;
   }
 
   // The valley is far from the start, so it is built while the player begins.
@@ -158,6 +180,7 @@ async function start() {
   let yaw = 0;
   let pitch = 0.25;
   const CAM_DIST = 4.2;
+  let camDist = CAM_DIST;
   const head = new THREE.Vector3();
   const camOffset = new THREE.Vector3();
   const camTarget = new THREE.Vector3();
@@ -178,7 +201,9 @@ async function start() {
     ray.origin = { x: head.x, y: head.y, z: head.z };
     ray.dir = { x: camOffset.x, y: camOffset.y, z: camOffset.z };
     const hit = physics.castRay(ray, CAM_DIST, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
-    const dist = hit ? Math.max(0.6, hit.timeOfImpact - 0.25) : CAM_DIST;
+    // Closer over the shoulder while aiming.
+    camDist = THREE.MathUtils.damp(camDist, player.state.aiming ? 2.8 : CAM_DIST, 8, dt || 1);
+    const dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
 
     camera.position.copy(head).addScaledVector(camOffset, dist);
     // Slight over-the-shoulder offset to the right.
@@ -232,7 +257,8 @@ async function start() {
     atmosphere(player.position, valley?.caveDim ?? 0);
     updateCulling(camera.position);
     updateCamp(dt);
-    updateHostiles(dt, player.position);
+    hostiles.update(dt, player);
+    combat.update(dt);
     hostages.update(dt, player);
     updateDss(dt, player);
     updateValleyExtraction(dt, player);
@@ -241,11 +267,11 @@ async function start() {
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, land, surfaceAt,
+    hostages, valley, land, surfaceAt, hostiles, combat,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
-      const idle = { state: move, consumeJump: () => false };
+      const idle = { state: move, consumeJump: () => false, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
       for (let i = 0; i < seconds * 60; i++) {
         player.update(FIXED, idle, yaw);
         physics.step();

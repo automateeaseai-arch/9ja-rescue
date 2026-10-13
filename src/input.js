@@ -6,6 +6,7 @@ export function createInput(canvas) {
     run: false,
     jump: false,     // consumed by the player each time it is read
     fire: false,     // held: aim and fire
+    punch: false,    // consumed each time it is read
     lookDX: 0,       // accumulated look deltas in pixels, reset each frame
     lookDY: 0,
   };
@@ -16,6 +17,7 @@ export function createInput(canvas) {
   addEventListener('keydown', (e) => {
     keys.add(e.code);
     if (e.code === 'Space') state.jump = true;
+    if (e.code === 'KeyE' && !e.repeat) state.punch = true;
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
   // Desktop fire: hold F or the right mouse button.
@@ -108,6 +110,10 @@ export function createInput(canvas) {
   fireBtn.addEventListener('touchend', () => { touchFire = false; });
   fireBtn.addEventListener('touchcancel', () => { touchFire = false; });
 
+  const punchBtn = document.getElementById('punch-btn');
+  punchBtn.addEventListener('touchstart', (e) => { state.punch = true; e.preventDefault(); }, { passive: false });
+  punchBtn.addEventListener('click', () => { state.punch = true; });
+
   return {
     isTouch,
     state,
@@ -122,6 +128,11 @@ export function createInput(canvas) {
       const d = { x: state.lookDX, y: state.lookDY };
       state.lookDX = state.lookDY = 0;
       return d;
+    },
+    consumePunch() {
+      const p = state.punch;
+      state.punch = false;
+      return p;
     },
     consumeJump() {
       const j = state.jump;

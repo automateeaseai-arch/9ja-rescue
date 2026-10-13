@@ -120,6 +120,11 @@ export async function createPlayer(scene, physics, spawn) {
   let airborne = false;
   let aim = 0;
   const airVel = new THREE.Vector3();
+  // Punch: a code-driven arm swing laid over whatever the legs are doing.
+  const PUNCH_TIME = 0.45, PUNCH_STRIKE = 0.13;
+  let punchT = -1;
+  let bones = {};
+  const state = { disabled: false, strike: false, aiming: false };
 
   function setCharacter(entry) {
     if (model) root.remove(model);
@@ -128,6 +133,8 @@ export async function createPlayer(scene, physics, spawn) {
       if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
     });
     root.add(model);
+    bones = {};
+    model.traverse((o) => { if (o.isBone) bones[o.name] = o; });
     mixer = new THREE.AnimationMixer(model);
     const clips = entry.gltf.animations.map((c) => makeInPlace(c.clone()));
     const walk = clips.find((c) => c.name === 'Walk');
@@ -152,9 +159,49 @@ export async function createPlayer(scene, physics, spawn) {
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
 
+  // Turns `bone` so that its child points along world direction `dir`, by weight w.
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion(), _qw = new THREE.Quaternion(), _qp = new THREE.Quaternion();
+  function pointBone(bone, child, dir, w) {
+    if (!bone || !child || w <= 0) return;
+    bone.getWorldPosition(_a);
+    child.getWorldPosition(_b);
+    _b.sub(_a).normalize();
+    _q.setFromUnitVectors(_b, dir);
+    bone.getWorldQuaternion(_qw).premultiply(_q);
+    bone.parent.getWorldQuaternion(_qp).invert();
+    bone.quaternion.slerp(_qp.multiply(_qw), w);
+    bone.updateMatrixWorld(true);
+  }
+  const punchDir = new THREE.Vector3();
+  const yAxis = new THREE.Vector3(0, 1, 0);
+  function punchPose(w) {
+    if (w <= 0 || !bones.RightArm) return;
+    model.updateMatrixWorld(true);
+    // Turn the chest so the right shoulder leads, then drive the arm out straight.
+    const sp = bones.Spine01;
+    if (sp) {
+      sp.getWorldQuaternion(_qw).premultiply(_q.setFromAxisAngle(yAxis, 0.45 * w));
+      sp.parent.getWorldQuaternion(_qp).invert();
+      sp.quaternion.copy(_qp.multiply(_qw));
+      sp.updateMatrixWorld(true);
+    }
+    punchDir.set(Math.sin(facing), 0, Math.cos(facing));
+    punchDir.y = 0.12;
+    punchDir.normalize();
+    pointBone(bones.RightArm, bones.RightForeArm, punchDir, w);
+    pointBone(bones.RightForeArm, bones.RightHand, punchDir, w);
+  }
+
   function update(dt, input, cameraYaw) {
     const s = input.state;
-    const mag = Math.min(1, Math.hypot(s.moveX, s.moveY));
+    const mag = state.disabled ? 0 : Math.min(1, Math.hypot(s.moveX, s.moveY));
+    if (input.consumePunch?.() && punchT < 0 && !state.disabled) punchT = 0;
+    if (punchT >= 0) {
+      const before = punchT;
+      punchT += dt;
+      if (before < PUNCH_STRIKE && punchT >= PUNCH_STRIKE) state.strike = true;
+      if (punchT > PUNCH_TIME) punchT = -1;
+    }
     // Movement is relative to where the camera is looking.
     forward.set(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw));
     right.set(-forward.z, 0, forward.x);
@@ -167,7 +214,7 @@ export async function createPlayer(scene, physics, spawn) {
     if (grounded) {
       vy = -1;
       airVel.set(0, 0, 0);
-      if (input.consumeJump()) {
+      if (input.consumeJump() && !state.disabled) {
         vy = JUMP_SPEED;
         // Launch forward in the direction of travel, or the way the character faces.
         const dir = mag > 0.05 ? move.clone() : new THREE.Vector3(Math.sin(facing), 0, Math.cos(facing));
@@ -199,8 +246,10 @@ export async function createPlayer(scene, physics, spawn) {
 
     // Visuals follow the physics body.
     root.position.set(next.x, next.y - FOOT_OFFSET, next.z);
-    if (mag > 0.05) {
-      const targetFacing = Math.atan2(move.x, move.z);
+    // While aiming, the character turns to face where the camera looks.
+    state.aiming = s.fire && !state.disabled;
+    if (state.aiming || mag > 0.05) {
+      const targetFacing = state.aiming ? Math.atan2(forward.x, forward.z) : Math.atan2(move.x, move.z);
       let diff = targetFacing - facing;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       facing += diff * Math.min(1, dt * 12);
@@ -214,7 +263,7 @@ export async function createPlayer(scene, physics, spawn) {
       const idleW = Math.max(0, 1 - walkW - runW);
       // Holding fire raises the rifle: the arms play the shooting clip while
       // the legs keep standing, walking or running.
-      aim = THREE.MathUtils.damp(aim, input.state.fire ? 1 : 0, 12, dt);
+      aim = THREE.MathUtils.damp(aim, state.aiming && punchT < 0 ? 1 : 0, 12, dt);
       actions.idle.setEffectiveWeight(idleW * (1 - aim));
       actions.walk.setEffectiveWeight(walkW * (1 - aim));
       actions.run.setEffectiveWeight(runW * (1 - aim));
@@ -225,8 +274,14 @@ export async function createPlayer(scene, physics, spawn) {
       for (const k of ['walk', 'walkLegs']) actions[k].timeScale = Math.max(0.6, speed / WALK_SPEED);
       for (const k of ['run', 'runLegs']) actions[k].timeScale = Math.max(0.7, speed / RUN_SPEED);
       mixer.update(dt);
+      if (punchT >= 0) {
+        const t = punchT;
+        punchPose(t < PUNCH_STRIKE ? t / PUNCH_STRIKE : t < 0.2 ? 1 : 1 - (t - 0.2) / (PUNCH_TIME - 0.2));
+      }
     }
   }
+
+  const _m = new THREE.Vector3();
 
   return {
     root,
@@ -234,5 +289,17 @@ export async function createPlayer(scene, physics, spawn) {
     teleport(x, y, z) { body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true); },
     update,
     get position() { return root.position; },
+    get facing() { return facing; },
+    get speed() { return speed; },
+    get aimWeight() { return aim; },
+    state,
+    // Where shots leave from: the right hand, a little forward.
+    muzzle(out = _m) {
+      if (bones.RightHand) bones.RightHand.getWorldPosition(out);
+      else out.copy(root.position).y += 1.4;
+      out.x += Math.sin(facing) * 0.35;
+      out.z += Math.cos(facing) * 0.35;
+      return out;
+    },
   };
 }
