@@ -22,7 +22,9 @@ const HOSTILES = [
 
 const AIM_RANGE = 20; // metres
 
-export function spawnHostiles(scene) {
+// `opts.spots` ([x, z] guard posts) and `opts.heightAt` place them in other areas.
+export function spawnHostiles(scene, opts = {}) {
+  const heightAt = opts.heightAt ?? ((x, z) => groundHeight(x, z));
   const units = [];
 
   (async () => {
@@ -33,9 +35,10 @@ export function spawnHostiles(scene) {
         const model = cloneSkinned(gltf.scene);
         model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
         // North/Middle Belt in the front row, South in the row behind.
-        const x = -6 + (i % 5) * 3 + (i < 5 ? 0 : 1.5);
-        const z = i < 5 ? 6 : 2.5;
-        model.position.set(x, groundHeight(x, z), z);
+        let x = -6 + (i % 5) * 3 + (i < 5 ? 0 : 1.5);
+        let z = i < 5 ? 6 : 2.5;
+        if (opts.spots) [x, z] = opts.spots[i];
+        model.position.set(x, heightAt(x, z, 20), z);
         scene.add(model);
         const mixer = new THREE.AnimationMixer(model);
         const idle = mixer.clipAction(retarget(shared.idle, model));

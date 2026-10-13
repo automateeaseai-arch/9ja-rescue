@@ -8,7 +8,7 @@ import { loadGlb } from './player.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const WORLD_SIZE = 320;
-const wind = { time: { value: 0 } };
+export const wind = { time: { value: 0 } };
 
 // Seeded random so the layout is the same every time the page loads.
 export function makeRandom(seed) {
@@ -120,7 +120,7 @@ export function addFixedCollider(physics, desc, position, rotation) {
 }
 
 // Gradient sky dome with a warm golden-hour glow around the sun.
-function buildSky(scene, sunDir) {
+export function buildSky(scene, sunDir, colors = {}) {
   const geo = new THREE.SphereGeometry(380, 32, 16);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -128,9 +128,9 @@ function buildSky(scene, sunDir) {
     fog: false,
     uniforms: {
       uSun: { value: sunDir.clone().normalize() },
-      uTop: { value: new THREE.Color('#3f8ee0') },
-      uHorizon: { value: new THREE.Color('#f5e1bc') },
-      uGlow: { value: new THREE.Color('#ffd27a') },
+      uTop: { value: new THREE.Color(colors.top ?? '#3f8ee0') },
+      uHorizon: { value: new THREE.Color(colors.horizon ?? '#f5e1bc') },
+      uGlow: { value: new THREE.Color(colors.glow ?? '#ffd27a') },
       uTime: wind.time,
     },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,

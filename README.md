@@ -20,7 +20,8 @@ npm run build    # production files in dist/
 
 ## Layout
 - `src/main.js`: start-up, camera and game loop
-- `src/world.js`: placeholder savanna village (terrain, huts, enterable house, boulders, trees, grass) with colliders
+- `src/world.js`: savanna area (terrain, huts, enterable house, boulders, trees, grass) with colliders
+- `src/valley/`: River Valley area (layout, terrain shape, assembly); `src/kit/`: reusable environment kit
 - `src/player.js`: character loading, movement and Walk/Run animation blending
 - `src/input.js`: keyboard, mouse and touch controls
 - `public/models/`: runtime GLB models
@@ -76,3 +77,27 @@ Trees, bushes, grass, dirt road, sky, clouds, dust and wind sway are generated i
 The captive camp (`src/camp.js`) sits 80 m north-east of the village, reached by a dirt track. Its stick-lattice hut (enterable, with doorway), tarp canopy, stick fences and flapping tarps are built in code; crates, drums and tables are Meshy copies; rocks reuse the granite boulder. The 10 hostages are held there.
 
 The DSS extraction point (`src/dss.js`) sits west of the village by a code-built river with rapids. Hostages following the player walk to the van's rear doors and board; once all have boarded the van drives off, then returns 15 s later. Each delivered hostage awards 5,000 RP (shown on the HUD only; not yet saved).
+
+## River Valley kit
+Meshy text-to-3D (preview + refine, 30 credits each), compressed with `tools/opt.mjs` + `tools/squeeze.mjs` (1024 px WebP textures; 512 px for the cart and stone). Static, no rig. Placement and sizes live in `src/kit/catalogue.js`; see `docs/river-valley.md` for the reference mapping and credit ledger.
+
+| Asset | File | Size | Meshy tasks (preview, refine) | Used for |
+|---|---|---|---|---|
+| Long mud barn, tin roof | `public/models/valley/Barn_Long_TinRoof.glb` | 314,324 B (SHA256 `5e96e25a…491a`) | `01a134bb-83a4-733d-981d-25648adbc6a5`, `01a134bd-2b86-733d-b8e3-c047da0ac402` | Highland village (refs 12, 13) |
+| Sandstone cave vault | `public/models/valley/Cave_Chamber_Skylight.glb` | 248,144 B (SHA256 `e7a8dd8c…4680`) | `01a134bd-6fa5-701b-890c-036ff7893285`, `01a134be-56d9-75b2-b67c-fb0e59d7352b` | Cave mouth on the gorge (refs 9, 10); no collider |
+| Mossy overhanging cliff | `public/models/valley/Cliff_Overhang_Mossy.glb` | 348,840 B (SHA256 `067ef8e0…58e0`) | `01a134bb-83ae-764b-b209-d7f8f0dca728`, `01a134bc-789f-7344-a037-f64dafa7f054` | Waterfall grotto (ref 8) |
+| Layered sandstone cliff | `public/models/valley/Cliff_Sandstone_Section.glb` | 138,608 B (SHA256 `6148d481…fb8b`) | `01a134bb-837d-7081-ac29-02c578b3cd8b`, `01a134bc-4b99-7783-92ca-d4ca0eaf6016` | Gorge walls, river banks, grotto bowl (refs 11, 15) |
+| Depot warehouse, blue doors | `public/models/valley/Depot_Warehouse.glb` | 373,540 B (SHA256 `d3960fd1…b623`) | `01a134c0-066c-7261-9764-3eced77c85e3`, `01a134c1-50f6-7227-8435-0616dec55f52` | Compound (ref 4). First attempt failed at Meshy, not charged |
+| Dugout canoe | `public/models/valley/Dugout_Canoe.glb` | 93,684 B (SHA256 `fe3cf72a…f398`) | `01a134bd-99e5-74be-b26b-7f645a2034ab`, `01a134be-40f6-7388-8ab2-fdc0d0677d94` | Wetland and jetty (refs 2, 3, 4) |
+| Rusty palm-oil mill machine | `public/models/valley/Palm_Oil_Mill.glb` | 258,060 B (SHA256 `c19e4b0d…cc38`) | `01a134bb-8338-7172-a646-4bf2eabc9179`, `01a134bc-4c6f-75ff-ae95-e4fa86516e74` | Mill shed in the compound (ref 5) |
+| Colonial plantation house | `public/models/valley/Plantation_House.glb` | 426,584 B (SHA256 `a4449d53…bc2c`) | `01a134bb-8374-748f-9d73-1a3f44f73372`, `01a134bd-ab6e-70ef-b361-a0dcd3e89f36` | Compound (ref 5); red roof recoloured to rust (tools/recolor.mjs) |
+| Buttress-root tree trunk | `public/models/valley/Rainforest_Tree_Buttress.glb` | 270,116 B (SHA256 `8ab490ee…8631`) | `01a134bd-1c60-710b-8092-501f62f37a9d`, `01a134bd-e436-7507-9c8b-a6d02ad688e8` | Rainforest trees with code trunks and canopy (refs 5, 16) |
+| Flat river stone | `public/models/valley/River_Stone_Flat.glb` | 49,620 B (SHA256 `6d222650…6781`) | `01a134bc-2bb5-762c-8bd3-69801cbca456`, `01a134bc-d50a-75a1-b9c2-00a973f2cc3e` | Stepping stones, viewpoint slab (refs 7, 15) |
+| Granite boulder U (came out without a roof) | `public/models/valley/Rock_Arch_Tunnel.glb` | 294,596 B (SHA256 `31a6dbd7…90ab`) | `01a134bb-8386-728d-af31-bb99067dfe75`, `01a134bc-6ab7-753a-b761-9b45f83c4df6` | Rock shelter with a boulder slab on top (ref 10) |
+| Thatched stilt house | `public/models/valley/Stilt_House_Thatch.glb` | 301,460 B (SHA256 `dec0113b…c4f1`) | `01a134b6-9f13-76d1-9aa7-0a1e11f0b9d3`, `01a134b8-8700-77f1-a0b0-052422252b0f` | Wetland (ref 2) |
+| Plastered stilt house, tin roof | `public/models/valley/Stilt_House_Tin.glb` | 328,608 B (SHA256 `330551ed…4bd5`) | `01a134bb-835e-733d-8afc-35dcd1e29c89`, `01a134bc-8c5c-704f-8b5d-671280fd944d` | Wetland (ref 3) |
+| Dry-stone wall segment | `public/models/valley/Stone_Wall_Dry.glb` | 150,544 B (SHA256 `72d25a8f…7cd7`) | `01a134bc-d055-7079-a8ec-7ec95dc48815`, `01a134bd-99ea-732a-9b32-c253998b6d80` | Village terrace walls (refs 12, 14) |
+| Wooden hand cart | `public/models/valley/Wooden_Cart.glb` | 143,352 B (SHA256 `5444e6d3…6fb2`) | `01a134bd-31ef-7334-a55d-1d3feca0b5fe`, `01a134bd-d91d-70a0-9084-cb29fa685a8b` | Village, compound (refs 13, 14) |
+| Overgrown concrete wall | not used (geometry came out broken) | | `01a134bd-0ef1-7231-ba10-09513a2ba1c0`, `01a134bd-9770-7318-8631-13e7327d0598` | Compound walls are code-built instead |
+
+Total for this kit: 480 credits (16 × 30). Environment total with the six earlier pieces: 660 of the 700 ceiling.

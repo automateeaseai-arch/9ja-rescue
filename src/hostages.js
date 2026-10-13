@@ -26,7 +26,11 @@ const FOLLOW_GAP = 1.4;   // metres between people in the line
 const WALK_SPEED = 1.7;
 const RUN_SPEED = 4.5;
 
-export function spawnHostages(scene, onRescue) {
+// `opts.spots` and `opts.heightAt` let other areas (e.g. the River Valley)
+// place the captives and keep them on bridges and boardwalks.
+export function spawnHostages(scene, onRescue, opts = {}) {
+  const spots = opts.spots ?? HOSTAGE_SPOTS;
+  const heightAt = opts.heightAt ?? ((x, z) => groundHeight(x, z));
   const units = [];
   const line = []; // rescued hostages, in follow order
 
@@ -37,9 +41,9 @@ export function spawnHostages(scene, onRescue) {
         const gltf = await loadGlb(HOSTAGES[i].url);
         const model = cloneSkinned(gltf.scene);
         model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
-        const [x, z] = HOSTAGE_SPOTS[i];
-        model.position.set(x, groundHeight(x, z), z);
-        model.rotation.y = 0; // face out of the compound, towards the village
+        const [x, z, yaw = 0] = spots[i];
+        model.position.set(x, heightAt(x, z, 3), z);
+        model.rotation.y = yaw; // face out of the compound
         scene.add(model);
         const mixer = new THREE.AnimationMixer(model);
         const clip = (n) => gltf.animations.find((c) => c.name === n);
@@ -93,7 +97,7 @@ export function spawnHostages(scene, onRescue) {
         u.model.position.addScaledVector(delta.normalize(), step);
         u.model.rotation.y = Math.atan2(delta.x, delta.z);
       }
-      u.model.position.y = groundHeight(u.model.position.x, u.model.position.z);
+      u.model.position.y = heightAt(u.model.position.x, u.model.position.z, u.model.position.y);
       leader = u.model.position;
     }
 
@@ -106,7 +110,7 @@ export function spawnHostages(scene, onRescue) {
       if (dist > 0.05) {
         u.model.position.addScaledVector(delta.normalize(), Math.min(u.speed * dt, dist));
         u.model.rotation.y = Math.atan2(delta.x, delta.z);
-        u.model.position.y = groundHeight(u.model.position.x, u.model.position.z);
+        u.model.position.y = heightAt(u.model.position.x, u.model.position.z, u.model.position.y);
       }
       if (dist < 0.45) {
         const done = u.destination.onArrive;
@@ -130,5 +134,5 @@ export function spawnHostages(scene, onRescue) {
     }
   }
 
-  return { update, line, sendTo, total: HOSTAGES.length };
+  return { update, line, sendTo, units, total: HOSTAGES.length };
 }

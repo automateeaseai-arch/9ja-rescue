@@ -72,3 +72,9 @@ html, body {
   right: calc(max(24px, env(safe-area-inset-right)) + 8px);
   background: rgba(150, 40, 30, 0.7);
 }
+
+#loading-switch {
+  margin-top: 6px; border: 1px solid var(--accent); border-radius: 8px; background: transparent; color: var(--ink);
+  font: inherit; font-size: 14px; padding: 8px 14px; cursor: pointer;
+}
+#hud .buttons { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }

@@ -12,6 +12,7 @@ import {
 } from './world.js';
 
 const tarpTime = { value: 0 };
+export function tickTarps(dt) { tarpTime.value += dt; }
 
 // Cloth that ripples gently, more at its free edges (uv.y near 1).
 export function tarpMaterial(color, rand) {
