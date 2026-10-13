@@ -48,8 +48,8 @@ export const SITE = {
   ],
   // Captive rooms: the store house and the open storage shed.
   captiveSpots: [[-98.4, 35.2, Math.PI / 2], [-61.5, 36.6, 0]],
-  // Two health kits inside the site.
-  insideKits: [[-93.6, 35.4, null], [-84, 21, null]],
+  // Two health kits inside the site walls, out in the open yard (never inside a building).
+  insideKits: [[-79, 14], [-72, 27]],
 };
 
 // The DSS destination: the savanna extraction point by the river (the van

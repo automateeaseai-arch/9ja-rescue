@@ -198,7 +198,7 @@ async function start() {
   mission = createMission({
     scene, camera, physics, player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input, applyCharacter,
     onMenu: (where) => leavePlay(where),
-    getDss: () => dss, valleyReady, land, roadX, surfaceAt, waterAt, origin: VALLEY_ORIGIN, isTouch: input.isTouch,
+    getDss: () => dss, valleyReady: Promise.all([valleyReady, world.ready]), land, roadX, surfaceAt, waterAt, origin: VALLEY_ORIGIN, isTouch: input.isTouch,
     look: (y, p) => { yaw = y; pitch = p; },
   });
 
@@ -216,7 +216,7 @@ async function start() {
   function leavePlay(where) {
     playing = false;
     document.body.classList.add('in-menu');
-    for (const el of document.querySelectorAll('.touch-ctrl, #interact-btn, #crosshair, #prompt, #waypoint, #tip')) el.hidden = true;
+    for (const el of document.querySelectorAll('.touch-ctrl, #interact-btn, #crosshair, #prompt, #waypoint, #guide, #tip')) el.hidden = true;
     input.state.aim = false;
     screens.show(where === 'characters' ? '05' : '04', { mode: 'mission' });
   }

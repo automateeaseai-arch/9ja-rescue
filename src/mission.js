@@ -75,7 +75,8 @@ export function createMission(ctx) {
     return !!hit && g + 30 - hit.timeOfImpact > g + 0.6;
   }
   function openSpot(p) {
-    if (p.yHint != null || !blocked(p.x, p.z)) return p;   // authored decks, cave and the store house stay
+    if (p.id?.startsWith('kit-in')) p = { ...p, yHint: undefined };   // old saves: the inside kits move outdoors
+    if (p.yHint != null || !blocked(p.x, p.z)) return p;   // authored deck and cave spots stay
     for (let r = 2; r <= 30; r += 2) {
       for (let a = 0; a < 12; a++) {
         const x = p.x + Math.cos(a * Math.PI / 6) * r, z = p.z + Math.sin(a * Math.PI / 6) * r;
@@ -128,7 +129,7 @@ export function createMission(ctx) {
       id: `kit-${i + 1}`, kind: 'health', x: o.pos[0], z: o.pos[1],
       yHint: o.k.deck ? ctx.land.height(o.pos[0], o.pos[1]) + 3 : o.k.cave ? 7.6 : undefined,
     }));
-    SITE.insideKits.forEach(([x, z], i) => { const [wx, wz] = W([x, z]); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz, yHint: 3 }); });
+    SITE.insideKits.forEach(([x, z], i) => { const [wx, wz] = W([x, z]); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz }); });
     const ammo = AMMO_SPOTS.map((a, i) => { const [x, z] = spot(a); return { id: `ammo-${i + 1}`, kind: 'ammo', x, z }; });
     // Roster by model index: 0-3 roam, 4-9 defend the site.
     const roster = [
@@ -346,7 +347,7 @@ export function createMission(ctx) {
     paused = false;
     timers = [];
     ui.pause.hidden = ui.down.hidden = ui.results.hidden = true;
-    ui.way.hidden = ui.interact.hidden = ui.tip.hidden = true;
+    ui.way.hidden = ui.guide.hidden = ui.interact.hidden = ui.tip.hidden = true;
     airdrop.cancel();
     vehicles.leave();
     if (player.state.mode === 'drive') player.leaveRide(player.position.x, player.position.y, player.position.z);
@@ -455,30 +456,30 @@ export function createMission(ctx) {
     const entrance = () => { const e = entrances.reduce((b, q) => (Math.hypot(q[0] - pp.x, q[1] - pp.z) < Math.hypot(b[0] - pp.x, b[1] - pp.z) ? q : b)); return v3(e[0], e[1]); };
     const roamLeft = left(roamUnits()), siteLeft = left(siteUnits());
     switch (stage) {
-      case 'ARRIVAL': return { text: airdrop.active ? 'Air entry: land in the marked area' : 'Arriving…', at: v3(setup.arrival.x, setup.arrival.z) };
+      case 'ARRIVAL': return { text: airdrop.active ? 'Air entry: land in the marked area' : 'Arriving…', at: v3(setup.arrival.x, setup.arrival.z), what: 'Landing area' };
       case 'EXPLORE': {
         const k = nearest(kitsLeft, (o) => v3(o.x, o.z, pp.y));
         const close = k && Math.hypot(k.x - pp.x, k.z - pp.z) < 160;
-        return { text: `Collect health supplies (${got}/8), then go to the captive site`, at: close ? v3(k.x, k.z) : entrance() };
+        return { text: `Collect health supplies (${got}/8), then go to the captive site`, at: close ? v3(k.x, k.z) : entrance(), what: close ? 'First-aid kit' : 'Captive site' };
       }
       case 'CLEAR_SITE': {
         const inside = Math.hypot(pp.x - site.x, pp.z - site.z) < site.r;
         const h = nearest(siteUnits().filter((u) => u.state !== 'down'), (u) => u.model.position);
-        return { text: `Clear the captive site: ${siteLeft} of 6 defenders left`, at: inside && h ? h.model.position : entrance() };
+        return { text: `Clear the captive site: ${siteLeft} of 6 defenders left`, at: inside && h ? h.model.position : entrance(), what: inside && h ? 'Defender' : 'Captive site' };
       }
       case 'RESCUE': {
         const freed = captives.units.filter((c) => c.state === 'following').length;
         const c = nearest(captives.units.filter((u) => ['bound', 'discovered'].includes(u.state)), (u) => u.model.position);
-        return { text: `Find and free the captives (${freed}/${setup.captives.length})`, at: c?.model.position ?? null };
+        return { text: `Find and free the captives (${freed}/${setup.captives.length})`, at: c?.model.position ?? null, what: c ? c.name : '' };
       }
       case 'ESCORT': {
         const d = dssPos();
         if (atDss && roamLeft + siteLeft > 0) {
           const h = nearest(hostiles.units.filter((u) => u.id && u.state !== 'down'), (u) => u.model.position);
-          return { text: `Defeat the remaining hostiles before the handover: ${roamLeft + siteLeft} left`, at: h?.model.position ?? null };
+          return { text: `Defeat the remaining hostiles before the handover: ${roamLeft + siteLeft} left`, at: h?.model.position ?? null, what: 'Hostile' };
         }
         const extra = roamLeft ? ` · ${roamLeft} roaming hostile${roamLeft > 1 ? 's' : ''} remain` : '';
-        return { text: atDss ? `At DSS: hand over the captives${extra}` : `Escort the captives to DSS by the river, west of the savanna village${extra}`, at: d };
+        return { text: atDss ? `At DSS: hand over the captives${extra}` : `Escort the captives to DSS by the river, west of the savanna village${extra}`, at: d, what: 'DSS van' };
       }
       case 'DSS_BOARDING': return { text: 'Captives boarding the DSS van…', at: null };
       case 'DSS_DEPARTURE': return { text: 'The DSS van is leaving with the captives…', at: null };
@@ -486,26 +487,27 @@ export function createMission(ctx) {
     }
   }
 
-  const proj = new THREE.Vector3();
-  function waypoint(at) {
-    if (!at) { ui.way.hidden = true; return; }
-    ui.way.hidden = false;
+  // The way to the objective: a blinking guide arrow at the top centre that
+  // turns to point where to go (up = straight ahead), with what and how far;
+  // and a bouncing pin over the target itself when it is on screen.
+  const proj = new THREE.Vector3(), fwd = new THREE.Vector3(), to = new THREE.Vector3();
+  function waypoint(at, what = '') {
+    if (!at) { ui.way.hidden = ui.guide.hidden = true; return; }
+    const cam = ctx.camera;
     const d = Math.hypot(at.x - player.position.x, at.z - player.position.z);
-    proj.set(at.x, at.y + 2.2, at.z).project(ctx.camera);
-    const behind = proj.z > 1;
-    let x = proj.x, y = proj.y;
-    if (behind) { x = -x; y = -y; }
-    const off = behind || Math.abs(x) > 0.92 || Math.abs(y) > 0.85;
-    if (off) {
-      // Edge arrow pointing the way.
-      const k = 0.9 / Math.max(Math.abs(x) / 0.92, Math.abs(y) / 0.85, 1e-3);
-      x *= k; y *= k;
-      if (behind && Math.abs(y) < 0.6) y = -0.75;
-    }
-    ui.way.style.left = `${(x * 0.5 + 0.5) * innerWidth}px`;
-    ui.way.style.top = `${(-y * 0.5 + 0.5) * innerHeight}px`;
-    ui.wayArrow.style.transform = off ? `rotate(${Math.atan2(-y, x) * 180 / Math.PI + 90}deg)` : 'none';
-    ui.wayArrow.textContent = off ? '▲' : '◆';
+    cam.getWorldDirection(fwd).setY(0).normalize();
+    to.set(at.x - cam.position.x, 0, at.z - cam.position.z).normalize();
+    const ang = Math.atan2(to.x * -fwd.z + to.z * fwd.x, to.dot(fwd));
+    ui.guide.hidden = false;
+    ui.guideArrow.style.transform = `rotate(${(ang * 180 / Math.PI).toFixed(1)}deg)`;
+    ui.guideText.textContent = `${what ? `${what} · ` : ''}${Math.round(d)} m`;
+    ui.guide.classList.toggle('near', d < 15);
+    proj.set(at.x, at.y + 2.0, at.z).project(cam);
+    const on = proj.z < 1 && Math.abs(proj.x) < 0.9 && proj.y < 0.75 && proj.y > -0.9;
+    ui.way.hidden = !on;
+    if (!on) return;
+    ui.way.style.left = `${(proj.x * 0.5 + 0.5) * innerWidth}px`;
+    ui.way.style.top = `${(-proj.y * 0.5 + 0.5) * innerHeight}px`;
     ui.wayDist.textContent = `${Math.round(d)} m`;
   }
 
@@ -539,7 +541,7 @@ export function createMission(ctx) {
     // HUD.
     const o = objective();
     ui.objective.textContent = o.text;
-    waypoint(o.at);
+    waypoint(o.at, o.what);
     const total = left(hostiles.units), sl = left(siteUnits());
     ui.counts.textContent = `Hostiles ${total}/10 · Site ${sl}/6${grenades.count ? ` · Grenades ${grenades.count}` : ''}`;
     ui.saveWarn.hidden = !saveFailed();
@@ -573,7 +575,8 @@ export function createMission(ctx) {
   function buildUi() {
     const el = (id) => document.getElementById(id);
     const u = {
-      objective: el('objective'), counts: el('counts'), way: el('waypoint'), wayArrow: el('way-arrow'), wayDist: el('way-dist'),
+      objective: el('objective'), counts: el('counts'), way: el('waypoint'), wayDist: el('way-dist'),
+      guide: el('guide'), guideArrow: el('guide-arrow'), guideText: el('guide-text'),
       interact: el('interact-btn'), tip: el('tip'), down: el('down'), results: el('results'), resultsBody: el('results-body'),
       pause: el('pause'), pauseInfo: el('pause-info'), saveWarn: el('save-warn'),
     };

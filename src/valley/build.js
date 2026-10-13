@@ -462,12 +462,12 @@ export async function buildValley(world, physicsWorld, { phone = false, step = a
     const a = rand() * 6.28, d = 8 + rand() * 40;
     const x = VX + Math.cos(a) * d, z = VZ + Math.sin(a) * d;
     const kind = homes.length < 7 ? 'home' : barns.length < 2 ? 'barn' : 'granary';
-    const r = kind === 'granary' ? 2.4 : kind === 'barn' ? 6 : 4.4;
+    const r = kind === 'granary' ? 3.2 : kind === 'barn' ? 6 : 4.4;
     if (shape.trailDist(x, z) < r + 1.5 || !flat(x, z, r) || taken.some(([tx, tz, tr]) => Math.hypot(x - tx, z - tz) < r + tr + 2)) continue;
     taken.push([x, z, r]);
     clear.push([x, z, r + 0.5]);
     const yaw = Math.round(rand() * 3) * Math.PI / 2 + (rand() - 0.5) * 0.2;
-    (kind === 'home' ? homes : kind === 'barn' ? barns : granaries).push({ x, z, yaw, s: kind === 'granary' ? 0.62 : 1, sink: 0.05, tint: [0.8 + rand() * 0.1, 0.76 + rand() * 0.08, 0.72 + rand() * 0.08] });
+    (kind === 'home' ? homes : kind === 'barn' ? barns : granaries).push({ x, z, yaw, s: 1, sink: 0.05, tint: [0.8 + rand() * 0.1, 0.76 + rand() * 0.08, 0.72 + rand() * 0.08] });
   }
   put('House_MudBrick_TinRoof', homes);
   put('Barn_Long_TinRoof', barns);

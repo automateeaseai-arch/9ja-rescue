@@ -7,6 +7,7 @@ import { loadGlb } from '../player.js';
 import { bakeModel, addFixedCollider } from '../world.js';
 import { addInstanced, mat, clusterSimplify } from './chunks.js';
 import { weathered, rockSurface } from './materials.js';
+import { doorwayFor, cutDoorway, interiorGeometry, interiorMaterial, addRoomColliders } from './doors.js';
 
 // scale: metres per model unit (models are ~1.9 units across).
 // collider: 'box' (fitted, `shrink` x/z), 'trimesh' (exact, walk-through
@@ -47,6 +48,12 @@ export async function loadKit(names) {
     const model = bakeModel(await loadGlb(`models/${def.file}.glb`));
     if (def.look) model.mat = weathered(model.mat, def.look);
     if (def.rock) model.mat = rockSurface(model.mat, def.rock);
+    // Buildings get a real doorway and a room inside (doors.js).
+    model.door = doorwayFor(n);
+    if (model.door) {
+      model.mat = cutDoorway(model.mat, model.door);
+      model.interior = interiorGeometry(model.door);
+    }
     model.def = def;
     model.name = n;
     // Distant copies of heavily repeated pieces use a lighter mesh.
@@ -71,7 +78,9 @@ export function place(scene, physics, model, items, heightAt, { maxDist = 300, s
     const m = mat(it.x, y, it.z, it.yaw ?? 0, sv, it.tiltX ?? 0, it.tiltZ ?? 0);
     const t = it.tint ?? 0.9 + ((list.length * 37) % 11) / 11 * 0.2;
     list.push({ m, c: Array.isArray(t) ? new THREE.Color(...t) : new THREE.Color(t, t, t) });
-    if (kind === 'box') {
+    if (model.door && kind !== 'none') {
+      addRoomColliders(physics, model.door, m);
+    } else if (kind === 'box') {
       const shrink = def.shrink ?? 0.9;
       const hx = (b.max.x - b.min.x) * sv[0] / 2 * shrink, hy = (b.max.y - b.min.y) * sv[1] / 2, hz = (b.max.z - b.min.z) * sv[2] / 2 * shrink;
       const cx = (b.max.x + b.min.x) / 2 * sv[0], cz = (b.max.z + b.min.z) / 2 * sv[2];
@@ -87,6 +96,7 @@ export function place(scene, physics, model, items, heightAt, { maxDist = 300, s
       addFixedCollider(physics, RAPIER.ColliderDesc.trimesh(new Float32Array(g.attributes.position.array), idx), { x: 0, y: 0, z: 0 });
     }
   }
+  if (model.interior) addInstanced(scene, model.interior, interiorMaterial(), list.map((it) => ({ m: it.m })), { maxDist: Math.min(maxDist, 120), shadow: false });
   // lowOnly: small or background copies always use the light mesh.
   if (lowOnly && model.lo) return addInstanced(scene, model.lo, model.mat, list, { maxDist, shadow });
   return addInstanced(scene, model.geo, model.mat, list, { maxDist, shadow, lo: model.lo, loDist: model.def.loDist ?? 90 });

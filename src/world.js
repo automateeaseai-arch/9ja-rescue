@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { addTreeShape } from './kit/crowns.js';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { DOORWAYS, cutDoorway, interiorGeometry, interiorMaterial, addRoomColliders } from './kit/doors.js';
 import { loadGlb } from './player.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clusterSimplify } from './kit/chunks.js';
@@ -630,18 +631,22 @@ async function addMeshyPieces(scene, physics, rand) {
   // Village: thatched huts in a ring and tin-roof houses around the enterable house.
   const hutSpots = [[-14, -6, 0.6], [-9, -15, 0.2], [2, -17, 0], [13, -12, -0.5], [16, 2, -1.4], [-16, 6, 1.9], [9, 14, 3.4], [-22, -12, 1], [21, -6, 2]];
   const hutScale = 2.6;
-  placeCopies(scene, hut, hutSpots.map(([x, z, r]) => [x, z, r, hutScale]), (x, y, z, rot, s) => {
-    const r = Math.max(hut.box.max.x, hut.box.max.z) * s * 0.92;
-    const h = (hut.box.max.y - hut.box.min.y) * s;
-    addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(h / 2, r), { x, y: y + h / 2, z });
-  });
+  // Every hut and house can be entered through its door (kit/doors.js).
+  const enter = (model, spec) => {
+    model.mat = cutDoorway(model.mat, spec);
+    const inside = { geo: interiorGeometry(spec), mat: interiorMaterial() };
+    const walls = (x, y, z, rot, s, q) => addRoomColliders(physics, spec, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q ?? new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rot, 0)), new THREE.Vector3(s, s, s)));
+    return { inside, walls };
+  };
+  const hutDoor = enter(hut, DOORWAYS.Hut_Thatched_Round), houseDoor = enter(house, DOORWAYS.House_MudBrick_TinRoof);
+  const hutItems = hutSpots.map(([x, z, r]) => [x, z, r, hutScale]);
+  placeCopies(scene, hut, hutItems, hutDoor.walls);
+  placeCopies(scene, hutDoor.inside, hutItems);
   const houseSpots = [[-24, 2, 1.3], [24, 10, -1.8], [-6, -28, 0.1], [12, -26, -0.3], [28, -18, -1.2]];
   const houseScale = 3.6;
-  placeCopies(scene, house, houseSpots.map(([x, z, r]) => [x, z, r, houseScale]), (x, y, z, rot, s, q) => {
-    const b = house.box;
-    const hx = (b.max.x - b.min.x) * s / 2, hy = (b.max.y - b.min.y) * s / 2, hz = (b.max.z - b.min.z) * s / 2;
-    addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(hx * 0.9, hy, hz * 0.9), { x, y: y + hy, z }, q);
-  });
+  const houseItems = houseSpots.map(([x, z, r]) => [x, z, r, houseScale]);
+  placeCopies(scene, house, houseItems, houseDoor.walls);
+  placeCopies(scene, houseDoor.inside, houseItems);
 }
 
 export function buildWorld(scene, physics, { phone = false } = {}) {

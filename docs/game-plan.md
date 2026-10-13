@@ -26,7 +26,7 @@ Code: `src/mission.js` (flow), `src/config.js` (all numbers and places), `src/sa
 - None respawn, and each counts once. Group membership is kept through reloads.
 
 **Health kits: exactly 10**
-- 8 outside, chosen from 20 spots along the way in; 2 inside the compound.
+- 8 outside, chosen from 20 spots along the way in; 2 inside the compound walls, in the open yard (never inside a building).
 - Each gives +10 HP once, also above 100, up to 200.
 
 **Ammo:** 6 fixed packs of 10 bullets.
@@ -108,6 +108,9 @@ Code: `src/mission.js` (flow), `src/config.js` (all numbers and places), `src/sa
 - Weapon selector: Gun, Cutlass, Unarmed. Cutlass: Fire becomes Slash (2 HP, Meshy sword-slash clip, Meshy cutlass in the hand); Aim is hidden. Unarmed: Fire is Punch (1 HP) and Aim becomes Kick (1 HP, Meshy Spartan kick).
 
 **Owner feedback (13 Oct)**
+- No first-aid kit is ever inside a building: the two site kits moved from the store house to the open compound yard; every kit is checked against roofs (now including every enterable building).
+- Every building can be entered through its door (`src/kit/doors.js`).
+- The direction arrow is now a blinking guide arrow at the top centre that turns towards the objective and names it with the distance, plus a bouncing pin over the target when it is on screen.
 - First-aid kits must never be inside buildings that can't be entered: every kit and ammo pack is checked against roofs, rocks and water, and moved to the nearest open ground.
 - Aiming: pressing Aim locks onto the nearest hostile in view; tapping a hostile picks them; swiping or dragging from Fire steers freely (finer while aiming).
 
