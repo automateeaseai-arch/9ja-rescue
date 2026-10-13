@@ -3,18 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#1b1410" />
+    <meta name="theme-color" content="#0d211a" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" />
     <title>9ja Rescue</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
-  <body>
+  <body class="in-menu">
     <canvas id="game"></canvas>
 
-    <div id="loading">
-      <div class="title">9ja Rescue</div>
-      <div class="bar"><div id="loading-fill"></div></div>
-      <div id="loading-text">Loading…</div>
-    </div>
 
     <div id="hud" hidden>
       <div class="status">
@@ -59,26 +57,26 @@
     </div>
     <div id="results" class="panel-screen" hidden>
       <div class="panel"><div id="results-body"></div>
-        <button id="results-again" type="button">Play again</button></div>
+        <button id="results-again" type="button" class="gold">Play again</button>
+        <button id="results-home" type="button">Home</button></div>
     </div>
     <div id="pause" class="panel-screen" hidden>
       <div class="panel">
         <div class="big">Paused</div>
-        <button id="pause-resume" type="button">Resume</button>
+        <button id="pause-resume" type="button" class="gold">Resume</button>
         <button id="pause-checkpoint" type="button">Restart from checkpoint</button>
         <button id="pause-retry" type="button">Retry mission</button>
-        <button id="pause-new" type="button">New mission</button>
+        <button id="pause-exit" type="button">Save and exit</button>
+        <button id="pause-abandon" type="button">Abandon mission</button>
         <div class="small" id="pause-info"></div>
         <details>
-          <summary>Test tools (until the menus arrive)</summary>
-          <div class="small">Next mission entry:</div>
-          <div class="row"><button data-entry="ground" type="button">Ground</button><button data-entry="parachute" type="button">Parachute</button><button data-entry="glider" type="button">Glider</button></div>
-          <div class="row"><button id="test-chute" type="button">+1 parachute</button><button id="test-glider" type="button">+1 glider</button><button id="test-grenades" type="button">+3 grenades</button></div>
-          <div class="row"><button id="test-truck" type="button">Own pickup</button><button id="test-bike" type="button">Own motorbike</button><button id="test-char" type="button">Switch character</button></div>
-          <div class="small">Equipment and entry take effect on the next new mission.</div>
+          <summary>Test tools</summary>
+          <div class="row"><button id="test-rp" type="button">+50,000 RP (to try the shop)</button></div>
         </details>
       </div>
     </div>
+
+    <div id="menu" class="in"></div>
 
     <div id="rotate">
       <div>Rotate your phone to continue</div>

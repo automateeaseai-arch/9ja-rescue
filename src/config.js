@@ -60,14 +60,14 @@ export const DSS_AREA = { radius: 14 };
 // valley. Validated at mission start (dry ground, far from the site and DSS,
 // no hostile close by).
 export const ARRIVALS = [
-  { at: 'road34', yaw: Math.PI },              // savanna arrival road, facing the village
-  { at: [56, -48], yaw: -2.4 },                // beside the empty savanna camp
-  { at: 'esc330', yaw: 0 },                    // escarpment road, facing the valley
-  { valley: [88, -140], yaw: 0.2 },            // plateau, on the north road
-  { valley: [206, 218], yaw: -2.35 },          // forest arrival trail (south-east)
-  { valley: [118, -40], yaw: -1.6 },           // highland terraced village
-  { valley: [40, -66], yaw: -1.4 },            // viewpoint over the gorge
-  { valley: [80, 204], yaw: -1.6 },            // wetland, south bank
+  { at: 'road34', yaw: Math.PI, name: 'Savanna road', area: 'the savanna road south of the village', image: 'savanna-village' },
+  { at: [56, -48], yaw: -2.4, name: 'Savanna camp', area: 'the empty camp among the savanna kopjes', image: 'savanna-kopjes' },
+  { at: 'esc330', yaw: 0, name: 'Escarpment road', area: 'the road over the escarpment', image: 'rock-arch' },
+  { valley: [88, -140], yaw: 0.2, name: 'Plateau road', area: 'the plateau north road above the valley', image: '06' },
+  { valley: [206, 218], yaw: -2.35, name: 'Forest trail', area: 'the red-mud forest trail in the south-east', image: 'forest-trail' },
+  { valley: [118, -40], yaw: -1.6, name: 'Terraced village', area: 'the highland terraced village', image: 'terraces' },
+  { valley: [40, -66], yaw: -1.4, name: 'Gorge viewpoint', area: 'the viewpoint over the rocky gorge', image: '08' },
+  { valley: [80, 204], yaw: -1.6, name: 'Wetland', area: 'the wetland on the south bank', image: 'wetland' },
 ];
 
 // Roaming hostiles: four are chosen per mission from these patrol beats

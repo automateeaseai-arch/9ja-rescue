@@ -15,12 +15,12 @@
 // Silent checkpoints (save.js) after pickups, defeats, discoveries, freeing,
 // DSS arrival and completion, plus every 20 s when it is safe. Knocked out:
 // restart from the checkpoint or retry the mission. Pause: resume, restart,
-// retry, new mission, and test tools that stand in for the 2D menus (entry
-// choice, equipment, character) until those arrive.
+// retry, save and exit, abandon. The menus (src/ui) choose the character and
+// loadout, show the briefing from a saved draft, then start or continue here.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { RULES, SITE, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
-import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed } from './save.js';
+import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
 import { PERSONAS } from './hostages.js';
 
 const VERSION = 1;
@@ -45,7 +45,8 @@ function segDist(px, pz, ax, az, bx, bz) {
 
 // ctx: { scene, camera, player, combat, hostiles, captives, pickups, grenades,
 //   vehicles, airdrop, getDss(), valleyReady (promise), land, roadX, surfaceAt,
-//   waterAt, origin, input, isTouch, look(yaw, pitch), characters }
+//   waterAt, origin, input, isTouch, look(yaw, pitch), applyCharacter(snapshot),
+//   onMenu(where) }
 export function createMission(ctx) {
   const { player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input } = ctx;
   const W = ([x, z]) => [x + ctx.origin.x, z + ctx.origin.z];
@@ -194,8 +195,11 @@ export function createMission(ctx) {
   }
 
   // Puts everything as `state` describes (new mission, retry or checkpoint).
-  async function apply(state, { fly = false } = {}) {
+  async function apply(state, { fly = false, onProgress } = {}) {
+    const prog = (f, text) => onProgress?.(f, text);
     ready = false;
+    paused = false;
+    ui.pause.hidden = true;
     timers = [];
     down = false;
     finished = false;
@@ -203,7 +207,11 @@ export function createMission(ctx) {
     airdrop.cancel();
     vehicles.leave();
     if (player.state.mode === 'drive') player.leaveRide(player.position.x, player.position.y, player.position.z);
+    prog(0.05, 'Preparing the map');
     await ctx.valleyReady;
+    prog(0.3, 'Loading your character');
+    await ctx.applyCharacter?.(setup.character);
+    prog(0.5, 'Placing hostiles and supplies');
     stage = state.stage;
     reachedSite = state.reachedSite;
     atDss = state.atDss;
@@ -225,12 +233,15 @@ export function createMission(ctx) {
     setup.kits = setup.kits.map(openSpot);
     setup.ammo = setup.ammo.map(openSpot);
     await pickups.configure([...setup.kits, ...setup.ammo], collected);
+    prog(0.65, 'Bringing in the captives');
     await captives.configure(setup.captives.map((c) => ({ ...c, state: state.captives[c.id] ?? 'bound' })), player.position);
     ctx.getDss()?.reset();
     const a = setup.arrival;
     const side = (k) => [a.x + Math.cos(a.yaw) * k, a.z - Math.sin(a.yaw) * k, a.yaw];
-    vehicles.stage('truck', account.inventory.truck ? side(5) : null);
-    vehicles.stage('bike', account.inventory.bike ? side(-4) : null);
+    // Only the vehicle equipped for this mission is parked at the arrival.
+    vehicles.stage('truck', setup.vehicle === 'truck' ? side(5) : null);
+    vehicles.stage('bike', setup.vehicle === 'bike' ? side(-4) : null);
+    prog(1, 'Ready');
     ready = true;
     // Air entry: start in the cargo plane over the arrival area.
     if (fly && setup.entry !== 'ground') {
@@ -251,27 +262,45 @@ export function createMission(ctx) {
     checkpoint();
   }
 
-  // New mission: a fresh seed, the next captive count, the chosen entry.
-  function newMission() {
-    clearMission();
+  // The briefing's mission: generated once and kept as a draft (so going back
+  // and forth between the menus never rerolls it) until Begin Mission.
+  function prepare() {
+    const d = loadDraft();
+    if (d?.setup?.version === VERSION) return d.setup;
     const count = account.captiveAlternation % 2 === 0 ? 1 : 2;
-    account.captiveAlternation++;
-    let entry = account.nextEntry;
-    if (entry !== 'ground' && !(account.inventory[entry] > 0)) entry = 'ground';
-    // Equipment is committed with the mission: grenades (up to 3) and one
-    // parachute or glider (deducted at the launch, which is now).
-    const g = Math.min(RULES.maxGrenades, account.inventory.grenade);
-    account.inventory.grenade -= g;
-    if (entry !== 'ground') account.inventory[entry]--;
-    saveAccount(account);
     const seed = (Math.random() * 2 ** 31) >>> 0;
-    setup = generate(seed, count, entry);
-    setup.grenades = g;
-    setup.launched = entry !== 'ground';
+    const s = generate(seed, count, 'ground');
+    saveDraft({ setup: s, created: Date.now() });
+    return s;
+  }
+  const discardDraft = () => clearDraft();
+
+  // Begin Mission: the equipped loadout is committed with the mission (up to
+  // three grenades, one parachute or glider used by the launch, which is
+  // now, and the equipped vehicle), together with the character snapshot.
+  function startPrepared(character, onProgress) {
+    const d = loadDraft();
+    if (!d?.setup) throw new Error('The briefing has expired. Open it again.');
+    const inv = account.inventory, lo = account.loadout;
+    const entry = lo.air && inv[lo.air] > 0 ? lo.air : 'ground';
+    const g = Math.min(RULES.maxGrenades, lo.grenades, inv.grenade);
+    const vehicle = lo.vehicle && inv[lo.vehicle] ? lo.vehicle : null;
+    account.captiveAlternation++;
+    inv.grenade -= g;
+    if (entry !== 'ground') inv[entry]--;
+    // The next loadout can only offer what is left.
+    lo.grenades = Math.min(lo.grenades, inv.grenade, RULES.maxGrenades);
+    if (lo.air && !(inv[lo.air] > 0)) lo.air = null;
+    const snap = { id: character.id, name: character.name, gender: character.gender, role: character.role, skin: character.skin, assetVersion: character.assetVersion };
+    setup = { ...d.setup, entry, grenades: g, vehicle, launched: entry !== 'ground', character: snap };
     cp = initialState(setup);
     saveMission({ setup, cp });
-    return apply(cp, { fly: true });
+    account.activeCharacter = character.id;
+    saveAccount(account);
+    clearDraft();
+    return apply(cp, { fly: true, onProgress });
   }
+
   // Same mission from its start (no new seed, no new deduction).
   function retry() {
     cp = initialState(setup);
@@ -283,15 +312,44 @@ export function createMission(ctx) {
     return apply(cp);
   }
 
-  async function begin() {
-    const saved = loadMission();
-    if (saved?.setup?.version === VERSION && !saved.completed) {
-      setup = saved.setup;
-      cp = saved.cp ?? initialState(setup);
-      // Continue: same seed, character, place and progress; no briefing replay.
-      return apply(cp, { fly: cp.stage === 'ARRIVAL' });
-    }
-    return newMission();
+  // The saved mission, if there is one to continue.
+  function saved() {
+    const m = loadMission();
+    return m?.setup?.version === VERSION && !m.completed ? m : null;
+  }
+  function savedSummary() {
+    const m = saved();
+    if (!m) return null;
+    const st = m.cp?.stage ?? 'ARRIVAL';
+    const text = { ARRIVAL: 'Arrival', EXPLORE: 'Collecting supplies', CLEAR_SITE: 'Clearing the captive site', RESCUE: 'Rescue in progress', ESCORT: 'Escort to DSS' }[st] ?? 'In progress';
+    return { stage: st, text, place: ARRIVALS[m.setup.arrival.index]?.name ?? 'River Valley', captives: m.setup.captives.length, character: m.setup.character ?? null };
+  }
+  // Continue: same seed, character, place and progress; no briefing replay.
+  function continueSaved(onProgress) {
+    const m = saved();
+    if (!m) throw new Error('There is no saved mission to continue.');
+    setup = m.setup;
+    cp = m.cp ?? initialState(setup);
+    return apply(cp, { fly: cp.stage === 'ARRIVAL', onProgress });
+  }
+  // Abandoning: progress and the draft go; characters, RP and purchases stay.
+  function abandon() {
+    clearMission();
+    clearDraft();
+    stop();
+    setup = null;
+    cp = null;
+  }
+  // Leaving play for the menus (the saved mission stays).
+  function stop() {
+    ready = false;
+    paused = false;
+    timers = [];
+    ui.pause.hidden = ui.down.hidden = ui.results.hidden = true;
+    ui.way.hidden = ui.interact.hidden = ui.tip.hidden = true;
+    airdrop.cancel();
+    vehicles.leave();
+    if (player.state.mode === 'drive') player.leaveRide(player.position.x, player.position.y, player.position.z);
   }
 
   // ---------------------------------------------------------------- play
@@ -452,7 +510,7 @@ export function createMission(ctx) {
   }
 
   function update(dt, inp = input) {
-    if (inp.consumePause?.()) togglePause();
+    if (inp.consumePause?.() && ready && !down && !finished) togglePause();
     if (!setup || !ready || paused) return;
     const pp = player.position;
     saveTimer += dt;
@@ -509,8 +567,7 @@ export function createMission(ctx) {
     const inv = account.inventory;
     ui.pauseInfo.innerHTML = `${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} missions · ${account.captivesRescued} captives rescued<br>
       Inventory: ${inv.parachute} parachute · ${inv.glider} glider · ${inv.grenade} grenades${inv.truck ? ' · pickup' : ''}${inv.bike ? ' · motorbike' : ''}<br>
-      This mission: ${setup?.captives.length ?? 0} captive${setup?.captives.length === 1 ? '' : 's'} · entry: ${setup?.entry ?? '-'} · ${setup?.grenades ?? 0} grenades`;
-    for (const b of ui.entryBtns) b.classList.toggle('on', b.dataset.entry === account.nextEntry);
+      This mission: ${setup?.character?.name ?? '-'} · ${setup?.captives.length ?? 0} captive${setup?.captives.length === 1 ? '' : 's'} · entry: ${setup?.entry ?? '-'} · ${setup?.grenades ?? 0} grenades`;
   }
 
   function buildUi() {
@@ -519,7 +576,6 @@ export function createMission(ctx) {
       objective: el('objective'), counts: el('counts'), way: el('waypoint'), wayArrow: el('way-arrow'), wayDist: el('way-dist'),
       interact: el('interact-btn'), tip: el('tip'), down: el('down'), results: el('results'), resultsBody: el('results-body'),
       pause: el('pause'), pauseInfo: el('pause-info'), saveWarn: el('save-warn'),
-      entryBtns: [...document.querySelectorAll('#pause [data-entry]')],
     };
     // Touch handled directly (a quick second tap is not lost to double-tap handling).
     const on = (id, f) => {
@@ -534,42 +590,29 @@ export function createMission(ctx) {
     u.interact.addEventListener('click', hit);
     on('down-checkpoint', () => restartCheckpoint());
     on('down-retry', () => retry());
-    on('results-again', () => newMission());
+    on('results-again', () => ctx.onMenu?.('characters'));
+    on('results-home', () => ctx.onMenu?.('home'));
     on('pause-resume', () => togglePause(false));
     on('pause-checkpoint', () => { togglePause(false); restartCheckpoint(); });
     on('pause-retry', () => { togglePause(false); retry(); });
+    on('pause-exit', () => { paused = false; checkpoint(); stop(); ctx.onMenu?.('home'); });
     // Abandoning needs a second tap (no browser pop-ups: they can be blocked).
     let armed = false;
-    on('pause-new', () => {
-      const b = el('pause-new');
-      if (!finished && !armed) {
+    on('pause-abandon', () => {
+      const b = el('pause-abandon');
+      if (!armed) {
         armed = true;
         b.textContent = 'Tap again: abandon this mission (characters, RP and purchases stay)';
-        setTimeout(() => { armed = false; b.textContent = 'New mission'; }, 4000);
+        setTimeout(() => { armed = false; b.textContent = 'Abandon mission'; }, 4000);
         return;
       }
       armed = false;
-      b.textContent = 'New mission';
-      togglePause(false);
-      newMission();
+      b.textContent = 'Abandon mission';
+      abandon();
+      ctx.onMenu?.('home');
     });
-    for (const b of u.entryBtns) {
-      b.addEventListener('touchend', (e) => { e.preventDefault(); b.click(); }, { passive: false });
-      b.addEventListener('click', () => {
-        const e = b.dataset.entry;
-        if (e !== 'ground' && !(account.inventory[e] > 0)) { ui.pauseInfo.innerHTML += `<br><b>No ${e} owned: add one with the buttons below first.</b>`; return; }
-        account.nextEntry = e;
-        saveAccount(account);
-        refreshPause();
-      });
-    }
-    const give = (f) => () => { f(account.inventory); saveAccount(account); refreshPause(); };
-    on('test-chute', give((i) => { i.parachute++; }));
-    on('test-glider', give((i) => { i.glider++; }));
-    on('test-grenades', give((i) => { i.grenade += 3; }));
-    on('test-truck', give((i) => { i.truck = true; }));
-    on('test-bike', give((i) => { i.bike = true; }));
-    on('test-char', () => ctx.characters?.next());
+    // Test tool: RP to try the shop (until real missions have paid enough).
+    on('test-rp', () => { account.rp += 50000; saveAccount(account); refreshPause(); });
     return u;
   }
 
@@ -581,7 +624,15 @@ export function createMission(ctx) {
   return {
     blocked,
     spotOf: spot,
-    begin,
+    prepare,
+    discardDraft,
+    startPrepared,
+    continueSaved,
+    savedSummary,
+    abandon,
+    stop,
+    reloadAccount() { account = loadAccount(); },
+    get ready() { return ready; },
     update,
     onDefeated,
     onCollect,
@@ -594,7 +645,6 @@ export function createMission(ctx) {
     get setup() { return setup; },
     get account() { return account; },
     retry,
-    newMission,
     restartCheckpoint,
     checkpoint,
     site,

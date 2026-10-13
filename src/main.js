@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildWorld, groundHeight, roadX, riverX, riverLevel, RIVER_HALF_WIDTH } from './world.js';
-import { createPlayer, loadCharacter, CHARACTERS, downloadStats } from './player.js';
+import { createPlayer, loadCharacter, downloadStats } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { createFx } from './fx.js';
@@ -20,35 +20,44 @@ import { buildLand, createAtmosphere, VALLEY_ORIGIN } from './land.js';
 import * as VL from './valley/layout.js';
 import { updateCulling } from './kit/chunks.js';
 import { treeAt } from './kit/crowns.js';
+import { tintSkin } from './skin.js';
+import { createScreens } from './ui/screens.js';
+import { look as lookOf } from './ui/characters.js';
 
 const canvas = document.getElementById('game');
-const loadingFill = document.getElementById('loading-fill');
-const loadingText = document.getElementById('loading-text');
+// The 2D screens (01 Splash … 13 Mission loading) run from the first moment;
+// the splash shows the real start-up progress below.
+const screens = createScreens();
 
-// Shows the current start-up step with a running timer, so a stall on a
-// phone can be reported precisely.
-let stepName = '';
+// Start-up steps with their share of the splash bar; the step text carries a
+// running timer and download count, so a stall on a phone can be reported precisely.
+let stepName = '', stepFrom = 0;
 const stepStart = performance.now();
 const stepTimer = setInterval(() => {
-  if (stepName) loadingText.textContent = `${stepName} (${Math.round((performance.now() - stepStart) / 1000)}s, ${Math.round(downloadStats.bytes / 1024)} KB downloaded)`;
+  if (stepName) screens.splashProgress(stepFrom, `${stepName} (${Math.round((performance.now() - stepStart) / 1000)} s, ${Math.round(downloadStats.bytes / 1024)} KB)`);
 }, 500);
-function step(name) {
+function step(name, at) {
   stepName = name;
-  loadingText.textContent = name;
+  stepFrom = at;
+  screens.splashProgress(at, name);
   return new Promise((r) => setTimeout(r, 30)); // let the screen repaint
 }
 function showError(msg) {
   clearInterval(stepTimer);
+  screens.fatal(`Something went wrong during "${stepName || 'loading'}": ${msg}`);
   stepName = '';
-  if (loadingText.isConnected) loadingText.textContent = `Something went wrong during "${loadingText.textContent}": ${msg}`;
 }
 addEventListener('error', (e) => showError(e.message));
-addEventListener('unhandledrejection', (e) => showError(e.reason?.message ?? String(e.reason)));
+addEventListener('unhandledrejection', (e) => {
+  // Mission loading reports its own failures (with Retry) on screen 13.
+  if (screens.playing || screens.ownsError?.(e.reason)) return;
+  showError(e.reason?.message ?? String(e.reason));
+});
 
 const isPhone = matchMedia('(pointer: coarse)').matches;
 
 async function start() {
-  await step('Starting physics');
+  await step('Starting physics', 0.03);
   await RAPIER.init();
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -66,14 +75,14 @@ async function start() {
 
   // One continuous world: the savanna in the north, the River Valley to the
   // south, joined by open country that rises gently onto the valley plateau.
-  await step('Building the savanna');
+  await step('Building the savanna', 0.15);
   if (isPhone) { camera.far = 300; camera.updateProjectionMatrix(); }
   const world = buildWorld(scene, physics, { phone: isPhone });
   if (isPhone) world.sky.scale.setScalar(0.75);
   const sun = world.sun;
   let updateCamp = () => {};
   buildCamp(scene, physics).then((f) => { updateCamp = f; }).catch((err) => console.error(err));
-  await step('Joining the river valley');
+  await step('Joining the river valley', 0.35);
   const prepared = prepareValley();
   const land = buildLand(scene, physics, { valleyH: prepared.heightAt, phone: isPhone });
   const atmosphere = createAtmosphere({ scene, world, phone: isPhone });
@@ -103,34 +112,21 @@ async function start() {
     return level == null ? null : { level, ground: land.height(x, z) };
   }
 
-  await step('Loading character');
-  loadingFill.style.width = '60%';
+  await step('Loading characters', 0.5);
   // Arrival point: on the dirt road south of the village, facing it.
   const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
   let grenades = null;
   const player = await createPlayer(scene, physics, spawn, {
     waterAt, canThrow: () => !!grenades?.ready, onThrow: () => grenades.begin(),
   });
-  let charIndex = 0;
-  player.setCharacter(await loadCharacter(charIndex));
-  loadingFill.style.width = '100%';
-
-  // Character switching stands in for the saved-character screens (2D, later).
-  const characters = {
-    busy: false,
-    async next() {
-      if (this.busy) return;
-      this.busy = true;
-      const target = (charIndex + 1) % CHARACTERS.length;
-      try {
-        player.setCharacter(await loadCharacter(target));
-        charIndex = target;
-      } catch (err) {
-        console.error(err);
-      }
-      this.busy = false;
-    },
-  };
+  player.setCharacter(await loadCharacter(0));
+  // The mission's character (from its saved snapshot): model by gender and
+  // role, plus the chosen skin tone.
+  async function applyCharacter(snap) {
+    const idx = snap ? lookOf(snap.gender, snap.role)?.model ?? 0 : 0;
+    player.setCharacter(await loadCharacter(idx));
+    tintSkin(player.model, snap?.skin ?? null);
+  }
 
   const toWorld = ([x, z]) => [x + VALLEY_ORIGIN.x, z + VALLEY_ORIGIN.z];
   const siteCentre = toWorld(SITE.centre);
@@ -168,14 +164,9 @@ async function start() {
   let valleyDone;
   const valleyReady = new Promise((r) => { valleyDone = r; });
 
-  await step('Preparing graphics');
+  await step('Preparing graphics', 0.85);
   renderer.compile(scene, camera);
-  clearInterval(stepTimer);
-  stepName = '';
-  document.getElementById('loading').remove();
   document.getElementById('hud').hidden = false;
-  document.getElementById('help').hidden = false;
-  if (!input.isTouch) setTimeout(() => { document.getElementById('help').hidden = true; }, 20000);
   // Weapon selector: Gun shows Fire, Aim and Reload; Unarmed turns Fire into Punch.
   const setWeaponUi = (w) => {
     for (const k of ['gun', 'cutlass', 'unarmed']) document.getElementById(`weapon-${k}`).classList.toggle('on', w === k);
@@ -205,11 +196,30 @@ async function start() {
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
 
   mission = createMission({
-    scene, camera, physics, player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input, characters,
+    scene, camera, physics, player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input, applyCharacter,
+    onMenu: (where) => leavePlay(where),
     getDss: () => dss, valleyReady, land, roadX, surfaceAt, waterAt, origin: VALLEY_ORIGIN, isTouch: input.isTouch,
     look: (y, p) => { yaw = y; pitch = p; },
   });
-  mission.begin().catch((err) => { console.error(err); showError(err.message); });
+
+  // Menus and play: the game loop only runs (and renders) while playing.
+  let playing = false;
+  function enterPlay() {
+    playing = true;
+    document.body.classList.remove('in-menu');
+    clock.getDelta();
+    if (!input.isTouch) {
+      document.getElementById('help').hidden = false;
+      setTimeout(() => { document.getElementById('help').hidden = true; }, 20000);
+    }
+  }
+  function leavePlay(where) {
+    playing = false;
+    document.body.classList.add('in-menu');
+    for (const el of document.querySelectorAll('.touch-ctrl, #interact-btn, #crosshair, #prompt, #waypoint, #tip')) el.hidden = true;
+    input.state.aim = false;
+    screens.show(where === 'characters' ? '05' : '04', { mode: 'mission' });
+  }
 
   // Aiming: pressing Aim picks the nearest hostile in view; a tap on another
   // hostile picks that one; the camera then turns to keep the crosshair on
@@ -362,6 +372,7 @@ async function start() {
   const FIXED = 1 / 60;
   let acc = 0;
   renderer.setAnimationLoop(() => {
+    if (!playing) return;
     const dt = Math.min(clock.getDelta(), 0.1);
     input.update();
     acc += dt;
@@ -459,6 +470,20 @@ async function start() {
       updateCamera(0);
     },
   };
+
+  clearInterval(stepTimer);
+  stepName = '';
+  // Hand over to the screens: they sign in, choose the character and loadout,
+  // show the briefing, then start or continue the mission here.
+  screens.gameReady({
+    mission,
+    isTouch: input.isTouch,
+    async start(character, onProgress) { await mission.startPrepared(character, onProgress); enterPlay(); },
+    async continueSaved(onProgress) { await mission.continueSaved(onProgress); enterPlay(); },
+    get playing() { return playing; },
+  });
+  window.game.screens = screens;
+  window.game.enterPlay = enterPlay;
 }
 
 start().catch((err) => {

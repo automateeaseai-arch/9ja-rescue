@@ -24,6 +24,8 @@ export function createInput(canvas) {
   if (isTouch) document.body.classList.add('touch');
 
   addEventListener('keydown', (e) => {
+    // Typing in the menus' forms is not game input.
+    if (document.body.classList.contains('in-menu') || e.target.closest?.('input, textarea')) return;
     keys.add(e.code);
     if (e.code === 'Space') state.jump = true;
     if (e.code === 'KeyE' && !e.repeat) state.punch = true;

@@ -542,6 +542,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   return {
     root,
     setCharacter,
+    get model() { return model; },
     // Called by the vehicles module every step while driving.
     ride(seat) {
       if (state.mode !== 'drive') {
