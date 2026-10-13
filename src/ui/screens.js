@@ -249,6 +249,7 @@ export function createScreens() {
         <div class="missions">
           ${saved ? btn(`Continue mission<small>${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
+          ${btn('Test: glider jump', 'testGlider', { kind: 'outline', cls: 'small', icon: I.plane })}
           ${saveFailed() ? '<div class="m-alert">Saving failed on this device: progress may not be kept.</div>' : ''}
         </div>
         <div class="nav">
@@ -657,6 +658,29 @@ export function createScreens() {
       }
       S.setup = null;
       show('05', { mode: 'mission' });
+    },
+    // Test tool (owner request): straight to the cargo plane with a glider.
+    // Grants one test glider, equips it and starts a fresh mission.
+    testGlider() {
+      if (S.game.mission.savedSummary()) {
+        sheet(`<h2 class="m-title">Glider test</h2><p>This abandons your current mission and starts a new one from the cargo plane with a glider.</p>
+          <div class="row">${btn('Cancel', 'closeSheet', { kind: 'outline' })}${btn('Start glider test', 'testGliderGo')}</div>`);
+        return;
+      }
+      actions.testGliderGo();
+    },
+    testGliderGo() {
+      closeSheet();
+      const m = S.game.mission, a = account();
+      m.abandon();
+      if (!charOf()) {
+        try { const c = Chars.save({ name: 'Tester', gender: 'male', role: 'hunter', skin: Chars.DEFAULT_SKIN }); a.activeCharacter = c.id; } catch (e) { toast(e.message, true); return; }
+      }
+      a.inventory.glider = (a.inventory.glider || 0) + 1;
+      a.loadout.air = 'glider';
+      saveAccount(a);
+      S.setup = m.prepare();
+      show('13', { kind: 'start' });
     },
     abandonNew() { S.game.mission.abandon(); S.setup = null; closeSheet(); show('05', { mode: 'mission' }); },
     rankings() {
