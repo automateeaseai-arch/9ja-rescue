@@ -57,7 +57,7 @@ North and Middle Belt share the North hostiles. Source sheets 017–021 from `9j
 
 All runtime GLBs are compressed for slow phone connections (WebP textures at 1024 px, meshopt geometry and animation; loaded with three.js MeshoptDecoder). Sizes and checksums in the tables are from before compression; the uncompressed originals are in git history.
 
-All models face +Z, have their origin at the feet and use metres. None has an idle clip yet; the game holds the first Walk frame as a stand-in.
+All models face +Z, have their origin at the feet and use metres. Shared clips in `public/models/anims/Shared_Anims.glb` (121 KB, skeleton only): Idle, Walk_Forward_While_Shooting_inplace (used upper-body only as aim/fire) and Sit_Cross_Legged_on_Floor, from Meshy animation task `01a13412-067c-716c-9e81-5ff310512d61` on the Female Soldier rig (9 credits). They are retargeted to every character at runtime (rotations only, hip height scaled).
 
 ## Environment register (northern savanna)
 | Piece | File | Details | Rig | In game |

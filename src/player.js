@@ -4,6 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { loadSharedAnims, retarget, upperBody, lowerBody } from './anims.js';
 
 export const CHARACTERS = [
   { name: 'Hunter', url: 'models/Hunter_mobile.glb' },
@@ -96,13 +97,8 @@ export function loadCharacter(index) {
   return characterCache.get(index);
 }
 
-// Holds the first Walk frame as a standing pose until real idle clips exist.
-export function idlePose(gltf) {
-  const walk = gltf.animations.find((c) => c.name === 'Walk');
-  return THREE.AnimationUtils.subclip(walk, 'IdleHold', 0, 1, 30);
-}
-
-export function createPlayer(scene, physics, spawn) {
+export async function createPlayer(scene, physics, spawn) {
+  const sharedAnims = await loadSharedAnims();
   const body = physics.createRigidBody(
     RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(spawn.x, spawn.y + FOOT_OFFSET + 0.2, spawn.z)
   );
@@ -122,6 +118,7 @@ export function createPlayer(scene, physics, spawn) {
   let speed = 0;
   let facing = Math.PI; // start facing -Z (towards the village house)
   let airborne = false;
+  let aim = 0;
   const airVel = new THREE.Vector3();
 
   function setCharacter(entry) {
@@ -135,12 +132,17 @@ export function createPlayer(scene, physics, spawn) {
     const clips = entry.gltf.animations.map((c) => makeInPlace(c.clone()));
     const walk = clips.find((c) => c.name === 'Walk');
     const run = clips.find((c) => c.name === 'Run');
-    // No idle clip exists yet; hold a single frame of the walk as a stand-in.
-    const idle = idlePose(entry.gltf);
+    const idle = retarget(sharedAnims.idle, model);
+    const shoot = retarget(sharedAnims.shoot, model);
+    // Full-body locomotion, plus legs-only copies used while the arms shoot.
     actions = {
       idle: mixer.clipAction(idle),
       walk: mixer.clipAction(walk),
       run: mixer.clipAction(run),
+      idleLegs: mixer.clipAction(lowerBody(idle)),
+      walkLegs: mixer.clipAction(lowerBody(walk)),
+      runLegs: mixer.clipAction(lowerBody(run)),
+      shoot: mixer.clipAction(upperBody(shoot)),
     };
     for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
     actions.idle.setEffectiveWeight(1);
@@ -209,11 +211,19 @@ export function createPlayer(scene, physics, spawn) {
       const walkW = THREE.MathUtils.clamp(speed / WALK_SPEED, 0, 1) *
         (1 - THREE.MathUtils.clamp((speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1));
       const runW = THREE.MathUtils.clamp((speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1);
-      actions.idle.setEffectiveWeight(Math.max(0, 1 - walkW - runW));
-      actions.walk.setEffectiveWeight(walkW);
-      actions.run.setEffectiveWeight(runW);
-      actions.walk.timeScale = Math.max(0.6, speed / WALK_SPEED);
-      actions.run.timeScale = Math.max(0.7, speed / RUN_SPEED);
+      const idleW = Math.max(0, 1 - walkW - runW);
+      // Holding fire raises the rifle: the arms play the shooting clip while
+      // the legs keep standing, walking or running.
+      aim = THREE.MathUtils.damp(aim, input.state.fire ? 1 : 0, 12, dt);
+      actions.idle.setEffectiveWeight(idleW * (1 - aim));
+      actions.walk.setEffectiveWeight(walkW * (1 - aim));
+      actions.run.setEffectiveWeight(runW * (1 - aim));
+      actions.idleLegs.setEffectiveWeight(idleW * aim);
+      actions.walkLegs.setEffectiveWeight(walkW * aim);
+      actions.runLegs.setEffectiveWeight(runW * aim);
+      actions.shoot.setEffectiveWeight(aim);
+      for (const k of ['walk', 'walkLegs']) actions[k].timeScale = Math.max(0.6, speed / WALK_SPEED);
+      for (const k of ['run', 'runLegs']) actions[k].timeScale = Math.max(0.7, speed / RUN_SPEED);
       mixer.update(dt);
     }
   }

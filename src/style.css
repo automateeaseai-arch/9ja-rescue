@@ -34,7 +34,7 @@ html, body {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none;
 }
 #hud .objective { background: var(--panel); padding: 8px 12px; border-radius: 8px; font-size: 14px; }
-#hud button, #jump-btn {
+#hud button, #jump-btn, #fire-btn {
   pointer-events: auto; border: 0; border-radius: 8px; background: var(--panel); color: var(--ink);
   font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer;
 }
@@ -55,7 +55,7 @@ html, body {
   position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
   background: rgba(255, 247, 234, 0.6); transform: translate(-50%, -50%);
 }
-#jump-btn {
+#jump-btn, #fire-btn {
   position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(48px, env(safe-area-inset-bottom));
   width: 72px; height: 72px; border-radius: 50%; font-weight: 700;
 }
@@ -66,4 +66,9 @@ html, body {
 }
 @media (orientation: portrait) and (pointer: coarse) {
   #rotate { display: grid; }
+}
+#fire-btn {
+  bottom: calc(max(48px, env(safe-area-inset-bottom)) + 88px);
+  right: calc(max(24px, env(safe-area-inset-right)) + 8px);
+  background: rgba(150, 40, 30, 0.7);
 }

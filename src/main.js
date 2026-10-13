@@ -62,7 +62,7 @@ async function start() {
   loadingFill.style.width = '60%';
   // Arrival point: on the dirt road south of the village, facing it.
   const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
-  const player = createPlayer(scene, physics, spawn);
+  const player = await createPlayer(scene, physics, spawn);
   let charIndex = 0;
   player.setCharacter(await loadCharacter(charIndex));
   loadingFill.style.width = '100%';
@@ -107,7 +107,10 @@ async function start() {
   document.getElementById('loading').remove();
   document.getElementById('hud').hidden = false;
   document.getElementById('help').hidden = false;
-  if (input.isTouch) document.getElementById('jump-btn').hidden = false;
+  if (input.isTouch) {
+    document.getElementById('jump-btn').hidden = false;
+    document.getElementById('fire-btn').hidden = false;
+  }
 
   // Orbit camera behind the player's shoulder.
   let yaw = 0;

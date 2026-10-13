@@ -3,7 +3,8 @@
 // and a way to check each model's walk animation.
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { loadGlb, idlePose, makeInPlace } from './player.js';
+import { loadGlb, makeInPlace } from './player.js';
+import { loadSharedAnims, retarget } from './anims.js';
 import { groundHeight } from './world.js';
 import { HOSTAGE_SPOTS } from './camp.js';
 
@@ -30,6 +31,7 @@ export function spawnHostages(scene, onRescue) {
   const line = []; // rescued hostages, in follow order
 
   (async () => {
+    const shared = await loadSharedAnims();
     for (let i = 0; i < HOSTAGES.length; i++) {
       try {
         const gltf = await loadGlb(HOSTAGES[i].url);
@@ -42,13 +44,16 @@ export function spawnHostages(scene, onRescue) {
         const mixer = new THREE.AnimationMixer(model);
         const clip = (n) => gltf.animations.find((c) => c.name === n);
         const actions = {
-          idle: mixer.clipAction(idlePose(gltf)),
+          idle: mixer.clipAction(retarget(shared.idle, model)),
+          sit: mixer.clipAction(retarget(shared.sit, model)),
           walk: mixer.clipAction(makeInPlace(clip('Walk'))),
           run: mixer.clipAction(makeInPlace(clip('Run'))),
         };
         for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
-        actions.idle.setEffectiveWeight(1);
-        units.push({ name: HOSTAGES[i].name, model, mixer, actions, speed: 0, following: false });
+        actions.sit.setEffectiveWeight(1);
+        actions.idle.time = (i * 0.41) % actions.idle.getClip().duration;
+        // Captives sit on the ground until rescued.
+        units.push({ name: HOSTAGES[i].name, model, mixer, actions, speed: 0, following: false, sitW: 1 });
       } catch (err) {
         console.error(err);
       }
@@ -115,7 +120,10 @@ export function spawnHostages(scene, onRescue) {
       const s = u.speed;
       const runW = THREE.MathUtils.clamp((s - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1);
       const walkW = THREE.MathUtils.clamp(s / WALK_SPEED, 0, 1) * (1 - runW);
-      u.actions.idle.setEffectiveWeight(Math.max(0, 1 - walkW - runW));
+      u.sitW = THREE.MathUtils.damp(u.sitW, u.following || u.destination ? 0 : 1, 5, dt);
+      const standW = Math.max(0, 1 - walkW - runW);
+      u.actions.sit.setEffectiveWeight(standW * u.sitW);
+      u.actions.idle.setEffectiveWeight(standW * (1 - u.sitW));
       u.actions.walk.setEffectiveWeight(walkW);
       u.actions.run.setEffectiveWeight(runW);
       u.mixer.update(dt);

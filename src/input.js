@@ -5,6 +5,7 @@ export function createInput(canvas) {
     moveY: 0,        // -1 back … 1 forward
     run: false,
     jump: false,     // consumed by the player each time it is read
+    fire: false,     // held: aim and fire
     lookDX: 0,       // accumulated look deltas in pixels, reset each frame
     lookDY: 0,
   };
@@ -17,6 +18,11 @@ export function createInput(canvas) {
     if (e.code === 'Space') state.jump = true;
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
+  // Desktop fire: hold F or the right mouse button.
+  let mouseFire = false;
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('mousedown', (e) => { if (e.button === 2) mouseFire = true; });
+  addEventListener('mouseup', (e) => { if (e.button === 2) mouseFire = false; });
   addEventListener('blur', () => keys.clear());
 
   // Desktop mouse look: drag, or click to lock the pointer.
@@ -96,10 +102,17 @@ export function createInput(canvas) {
   jumpBtn.addEventListener('touchstart', (e) => { state.jump = true; e.preventDefault(); }, { passive: false });
   jumpBtn.addEventListener('click', () => { state.jump = true; });
 
+  const fireBtn = document.getElementById('fire-btn');
+  let touchFire = false;
+  fireBtn.addEventListener('touchstart', (e) => { touchFire = true; e.preventDefault(); }, { passive: false });
+  fireBtn.addEventListener('touchend', () => { touchFire = false; });
+  fireBtn.addEventListener('touchcancel', () => { touchFire = false; });
+
   return {
     isTouch,
     state,
     update() {
+      state.fire = touchFire || mouseFire || keys.has('KeyF');
       if (joyId !== null) return; // joystick owns movement while held
       state.moveX = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
       state.moveY = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
