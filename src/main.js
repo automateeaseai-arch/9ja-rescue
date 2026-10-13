@@ -10,6 +10,7 @@ import { createPickups } from './pickups.js';
 import { createGrenades } from './grenades.js';
 import { createShowcase } from './showcase.js';
 import { createVehicles } from './vehicles.js';
+import { createAirDrop } from './airdrop.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
@@ -193,6 +194,15 @@ async function start() {
     spots: { truck: [roadX(52) + 3.6, 52, Math.PI - 0.1], bike: [roadX(42) - 3.2, 42, Math.PI + 0.3] },
   });
   const driveBtn = document.getElementById('drive-btn');
+  // Air drop from a cargo plane (test buttons for now; missions will choose when).
+  // The test plane flies north over the River Valley; the open ramp looks back south.
+  const airdrop = createAirDrop({ scene, player, fx, heightAt: surfaceAt, waterAt });
+  const dropTest = (kind) => {
+    if (vehicles.driving || airdrop.active || player.state.disabled) return;
+    airdrop.start(kind, VALLEY_ORIGIN.x + 10, VALLEY_ORIGIN.z + 120, Math.PI);
+  };
+  document.getElementById('drop-chute').addEventListener('click', () => dropTest('parachute'));
+  document.getElementById('drop-glider').addEventListener('click', () => dropTest('glider'));
   const promptEl = document.getElementById('prompt');
   // On show: hang glider at the valley viewpoint, a parachute drifting down over the savanna.
   const updateShowcase = createShowcase(scene, physics, {
@@ -234,6 +244,7 @@ async function start() {
   const CAM_DIST = 4.2;
   let camDist = CAM_DIST;
   let lastCar = null;
+  let lastAir = null;
   const head = new THREE.Vector3();
   const camOffset = new THREE.Vector3();
   const camTarget = new THREE.Vector3();
@@ -245,10 +256,24 @@ async function start() {
     pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003, -0.5, 1.1);
 
     const car = vehicles.driving;
+    const air = airdrop.active ? airdrop.phase : null;
     // Getting in: start looking from behind the vehicle.
     if (car && car !== lastCar) { yaw = car.heading + Math.PI; pitch = 0.3; }
     lastCar = car;
-    if (car) {
+    // Boarding the plane: look past the player out of the open ramp.
+    if (air === 'plane' && lastAir !== 'plane') { yaw = airdrop.heading + Math.PI; pitch = 0.5; }
+    if (air === 'fall' && lastAir === 'plane') pitch = 0.45;
+    if (air === 'fly' && lastAir === 'fall') pitch = 0.25;
+    lastAir = air;
+    if (air) {
+      // In the air the camera swings round behind the direction of flight.
+      if (air !== 'plane' && Math.abs(look.x) < 1) {
+        const target = airdrop.heading + Math.PI;
+        yaw += Math.atan2(Math.sin(target - yaw), Math.cos(target - yaw)) * Math.min(1, (dt || 0.016) * (air === 'fall' ? 1.2 : 2));
+      }
+      if (air === 'plane') pitch = THREE.MathUtils.clamp(pitch, 0.1, 0.55);
+      head.copy(player.position).add({ x: 0, y: airdrop.camHeight, z: 0 });
+    } else if (car) {
       // Swing round behind the vehicle while it moves, unless the player is looking around.
       if (Math.abs(car.speed) > 1 && Math.abs(look.x) < 1) {
         const target = car.heading + Math.PI + (car.speed < 0 ? Math.PI : 0);
@@ -264,14 +289,15 @@ async function start() {
     // Pull the camera in if a wall or rock is between it and the player.
     ray.origin = { x: head.x, y: head.y, z: head.z };
     ray.dir = { x: camOffset.x, y: camOffset.y, z: camOffset.z };
-    const hit = physics.castRay(ray, car ? car.T.camDist : CAM_DIST, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
-    // Closer over the shoulder while aiming; further back in a vehicle.
-    camDist = THREE.MathUtils.damp(camDist, car ? car.T.camDist : player.state.aiming ? 2.8 : CAM_DIST, 8, dt || 1);
+    const hit = air ? null : physics.castRay(ray, car ? car.T.camDist : CAM_DIST, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+    // Closer over the shoulder while aiming; further back in a vehicle or in the air.
+    const wantDist = air ? airdrop.camDist : car ? car.T.camDist : player.state.aiming ? 2.8 : CAM_DIST;
+    camDist = air === 'plane' ? wantDist : THREE.MathUtils.damp(camDist, wantDist, 3, dt || 1);
     const dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
 
     camera.position.copy(head).addScaledVector(camOffset, dist);
     // Slight over-the-shoulder offset to the right (centred in a vehicle).
-    const side = car ? 0 : 0.5;
+    const side = car || air ? 0 : 0.5;
     camera.position.x += Math.cos(yaw) * side;
     camera.position.z -= Math.sin(yaw) * side;
     camTarget.copy(head);
@@ -307,6 +333,7 @@ async function start() {
     input.update();
     acc += dt;
     while (acc >= FIXED) {
+      airdrop.update(FIXED, input);
       vehicles.update(FIXED, input);
       player.update(FIXED, input, yaw, pitch);
       physics.step();
@@ -327,6 +354,12 @@ async function start() {
       valley.update(dt, player, camera);
     }
     atmosphere(player.position, valley?.caveDim ?? 0);
+    // High up: see further (the haze starts further away and the view reaches the ground).
+    const alt = airdrop.active ? Math.max(0, airdrop.altitude) : 0;
+    scene.fog.near += alt * 1.6;
+    scene.fog.far += alt * 2.6;
+    const far = (isPhone ? 300 : 400) + alt * 2.6;
+    if (Math.abs(camera.far - far) > 5) { camera.far = far; camera.updateProjectionMatrix(); }
     updateCulling(camera.position);
     updateCamp(dt);
     hostiles.update(dt, player);
@@ -345,7 +378,16 @@ async function start() {
     driveBtn.hidden = !(input.isTouch && canDrive);
     driveBtn.textContent = vehicles.driving ? 'Get out' : 'Drive';
     for (const id of ['fire-btn', 'punch-btn', 'crouch-btn', 'throw-btn', 'jump-btn']) {
-      if (input.isTouch) document.getElementById(id).hidden = !!vehicles.driving;
+      if (input.isTouch) document.getElementById(id).hidden = !!vehicles.driving || (airdrop.active && id !== 'jump-btn');
+    }
+    // Air drop hints.
+    if (airdrop.active) {
+      const ph = airdrop.phase, J = input.isTouch ? 'Jump' : 'Space';
+      const what = airdrop.kind === 'parachute' ? 'parachute' : 'glider';
+      promptEl.hidden = false;
+      promptEl.textContent = ph === 'plane' ? `${J}: jump out (${what})`
+        : ph === 'fall' ? `${J}: open the ${what}`
+        : `${input.isTouch ? 'Stick' : 'WASD'}: steer · landing in ${Math.ceil(airdrop.timeLeft)} s`;
     }
     hostages.update(dt, player);
     updateDss(dt, player);
@@ -355,7 +397,7 @@ async function start() {
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades, showcase: updateShowcase, vehicles,
+    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades, showcase: updateShowcase, vehicles, airdrop,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
@@ -364,6 +406,7 @@ async function start() {
         consumeThrow: () => { const t = !!move.throw; move.throw = false; return t; },
         consumeCrouch: () => { const c = !!move.crouch; move.crouch = false; return c; }, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
       for (let i = 0; i < seconds * 60; i++) {
+        airdrop.update(FIXED, idle);
         vehicles.update(FIXED, idle);
         player.update(FIXED, idle, yaw, pitch);
         physics.step();

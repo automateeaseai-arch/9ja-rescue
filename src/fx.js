@@ -45,7 +45,7 @@ export function createFx(scene) {
   let ti = 0, fi = 0;
 
   // Sound: created on the first touch or key press (browsers require it).
-  let ctx = null, noise = null;
+  let ctx = null, noise = null, windNode = null;
   const unlock = () => {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -117,6 +117,27 @@ export function createFx(scene) {
         o.start(t);
         o.stop(t + 0.4);
       });
+    },
+    // Continuous air noise for the air drop: volume 0..1, pitch as a filter
+    // frequency (low drone in the plane, rushing wind in freefall).
+    wind(volume, freq = 800) {
+      if (!ctx || ctx.state !== 'running') return;
+      if (!windNode) {
+        if (volume < 0.01) return;
+        const src = ctx.createBufferSource();
+        src.buffer = noise;
+        src.loop = true;
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass';
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        src.connect(f).connect(g).connect(ctx.destination);
+        src.start();
+        windNode = { src, f, g };
+      }
+      const t = ctx.currentTime;
+      windNode.g.gain.setTargetAtTime(volume * 0.5, t, 0.2);
+      windNode.f.frequency.setTargetAtTime(freq, t, 0.2);
     },
     update(dt) {
       for (const m of tracers) {

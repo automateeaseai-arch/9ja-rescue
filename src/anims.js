@@ -5,6 +5,7 @@
 //   Combat_Anims.glb: jab, knock-down, fall forward, swim idle/forward,
 //                     crouch idle/walk, climbing up a wall
 //   Throw_Anim.glb:   over-shoulder throw (grenades)
+//   Air_Anims.glb:    rope hang (under the parachute), bar hang (hang glider)
 import * as THREE from 'three';
 import { loadGlb } from './player.js';
 
@@ -23,8 +24,9 @@ function hipsHeight(root) {
 
 export async function loadSharedAnims() {
   if (shared) return shared;
-  const [a, b, c] = await Promise.all([
+  const [a, b, c, d] = await Promise.all([
     loadGlb('models/anims/Shared_Anims.glb'), loadGlb('models/anims/Combat_Anims.glb'), loadGlb('models/anims/Throw_Anim.glb'),
+    loadGlb('models/anims/Air_Anims.glb'),
   ]);
   // Each clip remembers its source skeleton's hip height for retargeting.
   const from = (gltf, n) => {
@@ -46,6 +48,8 @@ export async function loadSharedAnims() {
     crouchIdle: from(b, 'CrouchLookAroundBow'),
     climb: from(b, 'climbing_up_wall'),
     throw: from(c, 'Over_Shoulder_Throw'),
+    ropeHang: from(d, 'Rope_Hang_Idle'),
+    barHang: from(d, 'Bar_Hang_Idle'),
   };
   return shared;
 }

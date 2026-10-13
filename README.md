@@ -65,6 +65,8 @@ Combat and movement clips in `public/models/anims/Combat_Anims.glb` (291 KB, ske
 
 Throw clip in `public/models/anims/Throw_Anim.glb` (56 KB): Over_Shoulder_Throw, Meshy animation task `01a1357e-38a6-73fd-8a02-e2532d33cde4` on the same rig (3 credits). Played on the arms from 0.6 s, grenade released at 1.83 s (clip time).
 
+Air drop clips in `public/models/anims/Air_Anims.glb` (78 KB): Rope_Hang_Idle (under the parachute) and Bar_Hang_Idle (on the hang glider, body tilted forward), Meshy animation task `01a13607-3058-730e-bcd2-c490414395fc` on the same rig (2 × 3 = 6 credits). Freefall uses the Swim_Forward clip slowed down, body belly-down.
+
 ## Items register
 From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
 
@@ -73,10 +75,11 @@ From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mj
 | Rifle (carbine, olive furniture, red-dot sight) | `public/models/items/Rifle.glb` | 354,956 B, 9,956 tris, 1024 px texture. Task `01a13556-4f0c-7275-8c91-0725d8ab7857`, 30 credits | Player's rifle: in the right hand while aiming (shots leave its muzzle), slung across the back otherwise. Shown 85 cm long |
 | First-aid kit (white and teal case, green cross) | `public/models/items/First_Aid_Kit.glb` | 130,604 B, 2,989 tris, 512 px texture. Task `01a13556-53d4-743b-8614-635d7ac1bfe7`, 30 credits | 11 kits along the routes, hovering over a green ring; +50 health, once each, only taken when hurt |
 | Grenade (yellow and black, ring pull) | `public/models/items/Grenade.glb` | 170,160 B, 3,087 tris, 512 px texture. Task `01a13589-e0ba-72a1-9dfe-a2df570f80da`, 30 credits | Thrown grenade and held in the hand during the throw; shown 12 cm tall |
-| Parachute (yellow/black canopy with harness pack) | `public/models/items/Parachute.glb` | 492,548 B, 9,974 tris, 1024 px texture. Task `01a13589-cdf0-7149-8902-b63aab397c63`, 30 credits | On show: drifts down over the savanna east of the arrival road, lands, repeats. Canopy about 7.5 m wide |
-| Hang glider (yellow/black wing, black frame) | `public/models/items/Hang_Glider.glb` | 387,236 B, 7,907 tris, 1024 px texture. Task `01a13589-d3cf-71f8-9e21-5eb60d5df0a9`, 30 credits | On show: resting at the valley viewpoint over the gorge. About 9.5 m wingspan |
+| Parachute (yellow/black canopy with harness pack) | `public/models/items/Parachute.glb` | 492,548 B, 9,974 tris, 1024 px texture. Task `01a13589-cdf0-7149-8902-b63aab397c63`, 30 credits | Air drop (`src/airdrop.js`, shown at scale 3, canopy about 5.7 m wide). Also on show drifting down over the savanna east of the arrival road |
+| Hang glider (yellow/black wing, black frame) | `public/models/items/Hang_Glider.glb` | 387,236 B, 7,907 tris, 1024 px texture. Task `01a13589-d3cf-71f8-9e21-5eb60d5df0a9`, 30 credits | Air drop (`src/airdrop.js`). Also on show at the valley viewpoint over the gorge. About 9.5 m wingspan. The model is almost flat (made from a front picture), so it looks right from behind and in front, thin from the side |
 | Pickup truck (green, yellow stripes, roof rack, rear bench cage) | `public/models/vehicles/Pickup_Truck.glb` | 597,012 B, 20,095 tris, 1024 px texture. Task `01a13589-d780-7471-8634-f0d37f417fbf`, 30 credits | Drivable (`src/vehicles.js`): parked east of the arrival road, facing north. About 5.3 m long. Front along local -X |
 | Motorbike (green dual-sport, gold forks) | `public/models/vehicles/Motorbike.glb` | 613,508 B, 15,148 tris, 1024 px texture. Task `01a13589-dbc5-7400-bcef-700b848f616c`, 30 credits | Drivable (`src/vehicles.js`): parked west of the arrival road. About 2.2 m long. Front along local -X |
+| Cargo plane (C-130 style, grey-green, open rear ramp, cargo bay inside) | `public/models/vehicles/Cargo_Plane.glb` | 432,376 B, 19,663 tris, 1024 px texture. Text-to-3D preview `01a13607-3259-7105-83ac-34892330ba89`, refine `01a13608-014e-726c-93a4-9315fd518e37`, 30 credits | Air drop (`src/airdrop.js`), shown 30 m long (scale 20). Nose along local -X; cargo floor at 0.95 model units × 20 above the base, open rear from about -7 m. Code adds floor rails, red webbing seats, strapped crates and a green jump light |
 
 ## Environment register (northern savanna)
 | Piece | File | Details | Rig | In game |

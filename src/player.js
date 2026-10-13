@@ -194,6 +194,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       swimIdle: mixer.clipAction(retarget(A.swimIdle, model)),
       swimForward: mixer.clipAction(retarget(A.swimForward, model)),
       climb: mixer.clipAction(retarget(A.climb, model, 'loopUp')),
+      ropeHang: mixer.clipAction(retarget(A.ropeHang, model)),
+      barHang: mixer.clipAction(retarget(A.barHang, model)),
     };
     for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
     for (const a of [actions.punch, actions.throw]) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
@@ -273,7 +275,9 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     }
   }
 
-  // Riding a vehicle: the vehicles module places the player at the seat each step.
+  // Riding a vehicle (or hanging from a parachute or glider): the vehicles or
+  // air-drop module places the player each step. seat.pose picks the clip:
+  // { clip, time } holds one frame, { clip, rate } plays it.
   let ride = null;
   const RIDE_POSE = { clip: 'crouchWalk', time: 0.3 }; // knees bent, hands forward: sits on the bike
   function updateRide(dt, input, cameraPitch) {
@@ -288,14 +292,15 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     if (ride.quat) root.quaternion.copy(ride.quat); else root.rotation.set(0, facing, 0);
     if (!mixer) return;
     for (const k of ALL) actions[k].setEffectiveWeight(0);
-    const a = actions[RIDE_POSE.clip];
+    const pose = ride.pose ?? RIDE_POSE;
+    const a = actions[pose.clip];
     a.setEffectiveWeight(1);
-    a.time = RIDE_POSE.time;
-    a.timeScale = 0;
+    if (pose.time != null) { a.time = pose.time; a.timeScale = 0; } else a.timeScale = pose.rate ?? 1;
     mixer.update(dt);
     model.position.y = 0;
     model.updateMatrixWorld(true);
     updateRifle(cameraPitch);
+    if (rifle && ride.noRifle) rifle.visible = false; // stowed in the air
   }
 
   function update(dt, input, cameraYaw, cameraPitch = 0.2) {
@@ -442,7 +447,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   }
 
   const ALL = ['idle', 'walk', 'run', 'crouchIdle', 'crouchWalk', 'idleLegs', 'walkLegs', 'runLegs', 'crouchIdleLegs',
-    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb'];
+    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb', 'ropeHang', 'barHang'];
   const W = {};
   function animate(dt) {
     for (const k of ALL) W[k] = 0;
