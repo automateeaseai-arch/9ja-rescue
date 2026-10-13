@@ -21,7 +21,8 @@ npm run build    # production files in dist/
 ## Layout
 - `src/main.js`: start-up, camera and game loop
 - `src/world.js`: savanna area (terrain, huts, enterable house, boulders, trees, grass) with colliders
-- `src/valley/`: River Valley area (layout, terrain shape, assembly); `src/kit/`: reusable environment kit
+- `src/land.js`: joins the savanna and River Valley into one continuous world
+- `src/valley/`: River Valley (layout, terrain shape, assembly); `src/kit/`: reusable environment kit
 - `src/player.js`: character loading, movement and Walk/Run animation blending
 - `src/input.js`: keyboard, mouse and touch controls
 - `public/models/`: runtime GLB models

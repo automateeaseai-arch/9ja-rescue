@@ -3,8 +3,11 @@
 // the vehicle or boat leaves along its route, then returns for the next group.
 import * as THREE from 'three';
 
-export function createExtraction({ hostages, vehicle, board, radius = 12, route, speed = 9, returnAfter = 15, onDelivered, deliveredCount }) {
+// `vehicle` may sit inside a moved group; distances use its world position.
+// onDelivered(name) is called as each hostage climbs in.
+export function createExtraction({ hostages, vehicle, board, radius = 12, route, speed = 9, returnAfter = 15, onDelivered }) {
   const home = { pos: vehicle.position.clone(), quat: vehicle.quaternion.clone() };
+  const at = new THREE.Vector3();
   const st = { state: 'parked', t: 0, dist: 0, v: 0, aboard: 0, boarding: 0 };
   const extras = [];
 
@@ -12,18 +15,18 @@ export function createExtraction({ hostages, vehicle, board, radius = 12, route,
     extras,
     update(dt, player) {
       if (st.state === 'parked') {
-        const near = player.position.distanceTo(vehicle.position) < radius + 4;
+        vehicle.getWorldPosition(at);
+        const near = player.position.distanceTo(at) < radius + 4;
         if (near && hostages.line.length > 0) {
           for (const u of [...hostages.line]) {
-            if (u.model.position.distanceTo(vehicle.position) > radius + 12) continue;
+            if (u.model.position.distanceTo(at) > radius + 12) continue;
             st.boarding++;
             hostages.sendTo(u, board(), (h) => {
               h.model.visible = false;
               h.gone = true;
               st.boarding--;
               st.aboard++;
-              const n = deliveredCount.add();
-              onDelivered?.(h.name, n);
+              onDelivered?.(h.name);
             });
           }
         }
@@ -54,12 +57,6 @@ export function createExtraction({ hostages, vehicle, board, radius = 12, route,
     },
     get state() { return st.state; },
   };
-}
-
-// Shared tally across extraction points.
-export function counter() {
-  let n = 0;
-  return { add: () => ++n, get value() { return n; } };
 }
 
 // Route helper: drive along a list of Vector3 waypoints at distance d.

@@ -128,6 +128,7 @@ export function createValleyShape() {
     escortDry: addTrail(R.escortDry, 3.6),
     ravine: addTrail(R.ravine, 3),
     gorgeTrail: addTrail(R.gorgeTrail, 2.6),
+    northRoad: addTrail(R.northRoad, 4),
   };
   function stage2(x, z) {
     let h = stage1(x, z);

@@ -30,11 +30,12 @@ Three.js 0.170 (graphics), Rapier 0.14 compat (physics), Vite 5 (dev server/buil
 | `dss.js` | DSS extraction at (-55, 38) by a code-built river with rapids. Meshy SUV and van, canopy, cases. Hostages following the player walk to the van's rear doors and board; the van drives north and returns after 15 s. 5,000 RP per hostage, shown on the HUD only. |
 | `hostages.js` | 10 hostages sit in the camp; reaching one makes them follow in single file; `sendTo()` walks them to a point (used for boarding). |
 | `hostiles.js` | 10 hostiles stand in rows in the village (or at guard posts passed in `opts.spots`), idle, face the player and raise their rifles within 20 m. No AI or damage yet. |
-| `valley/` | **River Valley area** (open with `#valley` or the "Go to the River Valley" button). `layout.js`: every location, route, boardwalk, captive spot and guard post, plus the seed. `heights.js`: terrain shape (highlands, west ridge, terraces, ravine, grotto bowl, trails, creeks, river, lake). `build.js`: assembles everything and returns `spawn`, `surfaceAt` (raycast walking height for NPCs on decks), `attachHostages` (boat and van extraction) and `update`. |
+| `land.js` | Joins the savanna and the valley into **one continuous world**: blended ground and road over the escarpment, plants and rocks in the open country, `createAtmosphere` (light and haze change gradually north → south), `createWorldHeight`. |
+| `valley/` | **River Valley**, the southern part of the world (centred on `ORIGIN` (-77, 500); built in the background after start; its own coordinates inside a moved group, with colliders offset). `layout.js`: every location, route, boardwalk, captive spot and guard post, plus the seed. `heights.js`: terrain shape (highlands, west ridge, terraces, ravine, grotto bowl, trails, creeks, river, lake). `build.js`: assembles everything and returns `spawn`, `surfaceAt` (raycast walking height for NPCs on decks), `attachHostages` (boat and van extraction) and `update`. |
 | `kit/` | Reusable environment kit: `catalogue.js` (Meshy pieces with size, collision, weathering, LOD; `loadKit`, `place`), `terrain.js` (heightfield from any function, holes, exact `groundAt`), `water.js` (river/creek ribbons, lakes, waterfall), `vegetation.js` (rainforest trees, sub-canopy, palms, banana, ferns, cocoyam, grass, reeds, lilies, vines, maize, acacia), `structures.js` (concrete and plank bridges, boardwalks, jetty, shelter, open shed, enterable code building, compound wall, tent, tank, puddles, DSS boat), `cave.js` (passages and chambers, skylight, open mouths), `materials.js` (weathering and rock shaders), `chunks.js` (instancing per map cell, distance culling, low-detail copies), `extraction.js`. |
 
 Savanna: the player arrives on the road at (roadX(34), 34) facing the village at (0, 0). The camp is north-east and the DSS point west.
-River Valley: arrival in the south-east rainforest; captives in the walled plantation compound west of the river (store house and open shed); extraction by boat at the jetty (south) or van at the clearing (west). Reference image mapping, routes and limitations: `docs/river-valley.md`.
+River Valley (south of the savanna, reached by the road over the escarpment): rainforest trail in its south-east; captives in the walled plantation compound west of the river (store house and open shed); extraction by boat at the jetty (south) or van at the clearing (west). Reference image mapping, routes and limitations: `docs/river-valley.md`.
 
 ## Asset pipeline (`tools/`)
 - `meshy-character.sh`: turnaround sheet (front/side/back in thirds) to multi-view model, auto-rig, Walk/Run, 1024 px texture (about 35 credits). Then `squeeze.mjs`.
@@ -58,6 +59,7 @@ River Valley: arrival in the south-east rainforest; captives in the walled plant
 - **Animations:** shared Idle, aim/fire (arms only) and Sit, used on every character.
 - **Credits spent:** about 1,019 of 1,020 this month.
 - **Fixes along the way:** loading on slow phone connections (all models compressed: 41.6 MB to 17.3 MB, on-demand loading); rocks made solid (colliders match the visible size); brighter lighting; higher, forward-moving jump.
+- **One continuous world (13 Oct):** no area switching. The savanna road climbs gently over an escarpment onto the valley plateau. Five captives are in the savanna camp and five in the valley compound.
 - **River Valley (13 Oct):**
   - **What it is:** a second area with 16 new Meshy pieces (480 credits; the broken concrete wall isn't used), and everything else built in code.
   - **Routes:** all 12 route checks pass; rescue and boarding were tested at both extraction points.
@@ -68,7 +70,7 @@ River Valley: arrival in the south-east rainforest; captives in the walled plant
 - Fire is animation only: no bullets, sound, damage, health or ammo.
 - Hostiles don't move, patrol or fight; welded rifles stretch when they aim.
 - No jump animation (3 credits); no crouch, swim, climb, cutlass, punch or kick.
-- Hostages and hostiles have no colliders and walk in straight lines; the savanna van drives over the grass rather than along a road.
+- Hostages and hostiles have no colliders and walk in straight lines; the savanna van drives over the grass rather than along a road. The savanna's start view is about 1 million triangles in phone mode (grass, characters, shadows): the next item to slim.
 - No swimming: the player can wade rivers and the lake. Valley stilt houses, plantation house and depot are closed shells (the store house and sheds are enterable).
 - RP isn't saved; no checkpoints, menus, accounts, character creation or tutorial.
 - The JS bundle is 2.7 MB, mostly the physics engine; shrinking it would speed up the first load.

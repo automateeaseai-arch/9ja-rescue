@@ -6,8 +6,9 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { clusterSimplify } from './kit/chunks.js';
 
-const WORLD_SIZE = 320;
+export const WORLD_SIZE = 320;
 export const wind = { time: { value: 0 } };
 
 // Seeded random so the layout is the same every time the page loads.
@@ -591,7 +592,12 @@ async function addMeshyPieces(scene, physics, rand) {
     rocks.push([roadX(z) + side * (4 + rand() * 3), z, rand() * 6.28, 0.7 + rand() * 0.9, 0.2, (rand() - 0.5) * 0.3]);
   }
   makeGranite(boulder);
-  placeCopies(scene, boulder, rocks, rockCollider(physics, boulder.box));
+  // Rocks and kopje hills are seen mostly from a distance: a lighter mesh
+  // keeps phones smooth (the roadside rocks below keep full detail).
+  const lightBoulder = { ...boulder, geo: clusterSimplify(boulder.geo, 12) };
+  const nearRocks = rocks.filter(([x, z]) => Math.abs(x - roadX(z)) < 12 && z > 10);
+  placeCopies(scene, boulder, nearRocks, rockCollider(physics, boulder.box));
+  placeCopies(scene, lightBoulder, rocks.filter((r) => !nearRocks.includes(r)), rockCollider(physics, boulder.box));
 
   // Granite kopjes like the reference art: a skirt of wide, squashed boulders,
   // stacked pillars above it and rounded blocks balanced on top. All solid.
@@ -616,7 +622,7 @@ async function addMeshyPieces(scene, physics, rand) {
       hills.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r, rand() * 6.28, [w, w * 1.3, w], -top / (w * 1.3), (rand() - 0.5) * 0.4]);
     }
   }
-  placeCopies(scene, boulder, hills, rockCollider(physics, boulder.box));
+  placeCopies(scene, lightBoulder, hills, rockCollider(physics, boulder.box));
 
   // Village: thatched huts in a ring and tin-roof houses around the enterable house.
   const hutSpots = [[-14, -6, 0.6], [-9, -15, 0.2], [2, -17, 0], [13, -12, -0.5], [16, 2, -1.4], [-16, 6, 1.9], [9, 14, 3.4], [-22, -12, 1], [21, -6, 2]];
@@ -643,7 +649,8 @@ export function buildWorld(scene, physics, { phone = false } = {}) {
   const sky = buildSky(scene, sunDir);
   scene.fog = new THREE.Fog('#f3dcb2', 110, 320);
 
-  scene.add(new THREE.HemisphereLight('#fff3e0', '#a8744a', 1.6));
+  const hemi = new THREE.HemisphereLight('#fff3e0', '#a8744a', 1.6);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight('#fff0d2', 3.4);
   sun.castShadow = true;
   sun.shadow.mapSize.setScalar(phone ? 1024 : 2048);
@@ -656,7 +663,11 @@ export function buildWorld(scene, physics, { phone = false } = {}) {
   scene.add(sun, sun.target);
 
   buildGround(scene, physics);
-  buildHouse(scene, physics, 0, -4);
+  // Everything else lives in a group that is hidden when the player is far
+  // away (in the river valley), so it costs nothing there.
+  const near = new THREE.Group();
+  scene.add(near);
+  buildHouse(near, physics, 0, -4);
 
   const treeSpots = [];
   for (let i = 0; i < 90; i++) {
@@ -668,20 +679,25 @@ export function buildWorld(scene, physics, { phone = false } = {}) {
   // A big shade tree beside the road at the arrival point.
   treeSpots.push([roadX(40) - 8, 40, true]);
   treeSpots.push([DSS.x + 12, DSS.z + 16, true]); // shade tree over the DSS canopy
-  buildTrees(scene, physics, rand, treeSpots);
-  buildBushes(scene, rand);
-  buildGrass(scene, rand);
+  buildTrees(near, physics, rand, treeSpots);
+  buildBushes(near, rand);
+  buildGrass(near, rand);
   const updateDust = buildDust(scene, rand);
 
-  const ready = addMeshyPieces(scene, physics, rand).catch((err) => console.error(err));
+  const ready = addMeshyPieces(near, physics, rand).catch((err) => console.error(err));
+  const hideBeyond = phone ? 110 : 200; // metres outside the savanna's edge
 
   return {
     sun,
+    hemi,
+    sky,
     ready,
     update(dt, playerPos) {
       wind.time.value += dt;
       sky.position.copy(playerPos);
       updateDust(dt, playerPos);
+      const out = Math.hypot(Math.max(0, Math.abs(playerPos.x) - WORLD_SIZE / 2), Math.max(0, Math.abs(playerPos.z) - WORLD_SIZE / 2));
+      near.visible = out < hideBeyond;
     },
   };
 }

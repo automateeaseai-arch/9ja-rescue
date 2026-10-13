@@ -21,6 +21,9 @@
 // 16 red-mud jungle trail         → forest arrival trail
 
 export const SEED = 2026;
+// Where the valley sits in the shared world: south of the savanna (the dry
+// north rises over an escarpment onto the plateau, then drops to the river).
+export const ORIGIN = { x: -77, z: 500 };
 export const HALF = 260; // the valley spans -260..260 on both axes
 export const GRID = 2;   // terrain vertex spacing
 
@@ -89,6 +92,8 @@ export const ROUTES = {
   escortDry: [[-112, 20], [-130, 22], [-150, 24], [-160, 25]],
   ravine: [[-117, 20], [-124, 0], [-130, -30], [-136, -70], [-144, -100], [-152, -122]],
   gorgeTrail: [[24, -86], [16, -120], [12, -160]],
+  // The savanna road continues south over the escarpment onto the plateau.
+  northRoad: [[82, -262], [80, -200], [88, -140], [110, -100], [124, -52]],
 };
 
 // Boardwalk network over the wetland (deck at lake level + 1.2 m).

@@ -5,17 +5,17 @@
 // bridges, boardwalks and extraction points.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { buildSky, wind, addFixedCollider } from '../world.js';
-import { tickTarps, tarpMaterial, cloth } from '../camp.js';
+import { addFixedCollider } from '../world.js';
+import { tarpMaterial, cloth } from '../camp.js';
 import { makeRandom, Path, noise2, fbm2, smooth, clamp, lerp } from '../kit/util.js';
 import { buildTerrain } from '../kit/terrain.js';
 import { createCave, buildCave } from '../kit/cave.js';
 import { waterMaterial, buildRiverStrip, buildPond, buildWaterfall, waterTime } from '../kit/water.js';
 import { loadKit, place, pieceSize } from '../kit/catalogue.js';
-import { updateCulling, setDistanceScale } from '../kit/chunks.js';
+import { setDistanceScale } from '../kit/chunks.js';
 import * as V from '../kit/vegetation.js';
 import * as S from '../kit/structures.js';
-import { createExtraction, counter, polylineRoute, v3 } from '../kit/extraction.js';
+import { createExtraction, polylineRoute, v3 } from '../kit/extraction.js';
 import { createValleyShape } from './heights.js';
 import * as L from './layout.js';
 
@@ -28,34 +28,47 @@ const PAL = {
   sandstone: C('#a8875f'), granite: C('#959083'), marsh: C('#5a6f37'), yard: C('#86523a'),
 };
 
-export async function buildValley(scene, physics, { phone = false, step = async () => {} } = {}) {
-  const rand = makeRandom(L.SEED);
+// Moves every collider the valley creates by the valley's origin, so all
+// valley code can keep working in its own coordinates.
+function offsetPhysics(physics, o) {
+  return {
+    createRigidBody(desc) {
+      const t = desc.translation;
+      desc.translation = { x: t.x + o.x, y: t.y, z: t.z + o.z };
+      return physics.createRigidBody(desc);
+    },
+    createCollider: (desc, body) => physics.createCollider(desc, body),
+    castRay(ray, ...args) {
+      const src = ray.origin;
+      ray.origin = { x: src.x + o.x, y: src.y, z: src.z + o.z };
+      const hit = physics.castRay(ray, ...args);
+      ray.origin = src;
+      return hit;
+    },
+  };
+}
+
+// The valley's shape is cheap to compute; the land joining it to the
+// savanna needs it before the valley itself is built.
+export function prepareValley() {
   const shape = createValleyShape();
   const cave = createCave(L.CAVE, shape.height);
   const heightAt = (x, z) => cave.terrainMod(x, z, shape.height(x, z));
+  return { shape, cave, heightAt };
+}
 
-  // ---- Light and atmosphere: one daylight baseline for the whole valley.
-  // Warm sun, soft blue-white sky fill, gentle humid haze (no colour grading).
-  const sunDir = new THREE.Vector3(-50, 62, -38);
-  const sky = buildSky(scene, sunDir, { top: '#4a93dc', horizon: '#e9e7dc', glow: '#ffe2a8' });
-  // Phones see less far: closer haze, shorter draw distance, smaller sky.
-  const far = phone ? 240 : 330;
-  sky.scale.setScalar((far - 20) / 380); // inside the camera's far plane
-  scene.fog = new THREE.Fog('#dfe2d8', phone ? 55 : 70, phone ? 225 : 300);
+// Builds the valley inside `world` with its centre at `origin` (world x, z).
+// Light, sky and haze come from the shared world.
+export async function buildValley(world, physicsWorld, { phone = false, step = async () => {}, origin = { x: 0, z: 0 }, prepared = prepareValley() } = {}) {
+  const rand = makeRandom(L.SEED);
+  const { shape, cave, heightAt } = prepared;
+  const scene = new THREE.Group();
+  scene.position.set(origin.x, 0, origin.z);
+  world.add(scene);
+  scene.updateMatrixWorld(true);
+  const physics = offsetPhysics(physicsWorld, origin);
+  // Phones switch to low-detail copies sooner and draw less far.
   setDistanceScale(phone ? 0.68 : 1, phone ? 0.55 : 1);
-  const hemi = new THREE.HemisphereLight('#e6eefc', '#7a6748', 1.2);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight('#fff0d6', 3.1);
-  sun.castShadow = true;
-  sun.shadow.mapSize.setScalar(phone ? 1024 : 2048);
-  const sc = sun.shadow.camera;
-  sc.left = sc.bottom = -45;
-  sc.right = sc.top = 45;
-  sc.far = 260;
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.03;
-  sun.userData.offset = sunDir.clone().normalize().multiplyScalar(110);
-  scene.add(sun, sun.target);
 
   // ---- Terrain ----
   await step('Shaping the valley');
@@ -144,7 +157,7 @@ export async function buildValley(scene, physics, { phone = false, step = async 
   const poolMat = waterMaterial({ shallow: '#5fb3a1', deep: '#1f6b62', sky: '#d6e4e2', opacity: 0.82, flowSpeed: 0.35 });
   buildRiverStrip(scene, shape.river, {
     levelAt: (s) => shape.riverLevelAt(s), halfWidthAt: (p) => shape.riverWidthAt(p.z), groundAt, material: riverMat, across: 8,
-    skip: (x, z) => shape.lakeR(x, z) < 0.92,
+    skip: (x, z) => shape.lakeR(x, z) < 0.92 || z < -252, // starts at a spring below the escarpment
   });
   for (const [c, hw] of [[shape.creek, 2.4], [shape.grottoStream, 1.8], [shape.ravineStream, 1.5]]) {
     buildRiverStrip(scene, c, { levelAt: (s, p) => p.y, halfWidthAt: () => hw - 0.9, groundAt, material: creekMat, across: 3 });
@@ -683,53 +696,48 @@ export async function buildValley(scene, physics, { phone = false, step = async 
   V.hangingVines(scene, vineItems, rand);
 
   // ================= Extraction logic =================
-  const delivered = counter();
+  const toWorld = (v) => scene.localToWorld(v.clone());
+  const W = (x, z) => [x + origin.x, z + origin.z];
   function attachHostages(hostages, onDelivered) {
-    const RP = 5000;
-    const report = (name, n) => onDelivered?.(name, n, hostages.total, n * RP);
     const river = createExtraction({
-      hostages, vehicle: boat, radius: 14, deliveredCount: delivered, onDelivered: report,
-      board: () => J.side.clone(), route: polylineRoute(upstream), speed: 8, returnAfter: 18,
+      hostages, vehicle: boat, radius: 14, onDelivered,
+      board: () => toWorld(J.side), route: polylineRoute(upstream), speed: 8, returnAfter: 18,
     });
     const dry = createExtraction({
-      hostages, vehicle: van, radius: 12, deliveredCount: delivered, onDelivered: report,
-      board: () => van.position.clone().add(new THREE.Vector3(vanLen / 2 + 0.7, 0, 0)),
+      hostages, vehicle: van, radius: 12, onDelivered,
+      board: () => toWorld(van.position.clone().add(new THREE.Vector3(vanLen / 2 + 0.7, 0, 0))),
       route: polylineRoute(vanRoute), speed: 12, returnAfter: 15,
     });
     return (dt, player) => {
       river.update(dt, player);
       dry.update(dt, player);
-      vanBody.setNextKinematicTranslation({ x: van.position.x, y: van.position.y + (vb.max.y - vb.min.y) * 1.5, z: van.position.z });
+      vanBody.setNextKinematicTranslation({ x: van.position.x + origin.x, y: van.position.y + (vb.max.y - vb.min.y) * 1.5, z: van.position.z + origin.z });
       vanBody.setNextKinematicRotation(van.quaternion);
     };
   }
 
-  // Inside the cave the sky fill fades so the rock reads darker than daylight.
-  let caveW = 0;
-  const baseHemi = hemi.intensity;
-  return {
-    sun,
-    far,
-    spawn: new THREE.Vector3(L.SPAWN.x, groundAt(L.SPAWN.x, L.SPAWN.z), L.SPAWN.z),
-    spawnYaw: Math.PI / 4,
-    hostageSpots: L.HOSTAGE_SPOTS,
-    hostileSpots: L.HOSTILE_SPOTS,
-    surfaceAt,
-    groundAt,
-    cave,
-    shape,
-    boardwalkPaths,
+  // Inside the cave the sky fill fades so the rock reads darker than daylight
+  // (`caveDim`, 0..1, is applied by the shared lighting).
+  const camLocal = new THREE.Vector3();
+  const api = {
+    origin,
+    root: scene,
+    hostageSpots: L.HOSTAGE_SPOTS.map(([x, z]) => W(x, z)),
+    hostileSpots: L.HOSTILE_SPOTS.map(([x, z]) => W(x, z)),
+    surfaceAt: (x, z, y) => surfaceAt(x - origin.x, z - origin.z, y),
+    groundAt: (x, z) => groundAt(x - origin.x, z - origin.z),
+    // Valley-local helpers (tests and tools).
+    local: { groundAt, surfaceAt, cave, shape, boardwalkPaths },
+    toWorld: (x, z) => W(x, z),
+    caveDim: 0,
     attachHostages,
     update(dt, player, camera) {
-      wind.time.value += dt;
       waterTime.value += dt;
-      tickTarps(dt);
-      sky.position.copy(player.position);
       updateFall(dt);
-      const inCave = cave.inside(camera.position.x, camera.position.z) && camera.position.y < cave.ceilAt(camera.position.x, camera.position.z) + 0.5;
-      caveW = THREE.MathUtils.damp(caveW, inCave ? 1 - (cave.depth(camera.position.x, camera.position.z) < 0.3 ? 0.5 : 0) : 0, 3, dt);
-      hemi.intensity = baseHemi * (1 - caveW * 0.55);
-      updateCulling(camera.position);
+      camLocal.set(camera.position.x - origin.x, camera.position.y, camera.position.z - origin.z);
+      const inCave = cave.inside(camLocal.x, camLocal.z) && camLocal.y < cave.ceilAt(camLocal.x, camLocal.z) + 0.5;
+      api.caveDim = THREE.MathUtils.damp(api.caveDim, inCave ? 1 - (cave.depth(camLocal.x, camLocal.z) < 0.3 ? 0.5 : 0) : 0, 3, dt);
     },
   };
+  return api;
 }

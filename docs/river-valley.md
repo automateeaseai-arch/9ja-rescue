@@ -1,6 +1,18 @@
 # River Valley environment
 
-A second playable area: one connected river valley with an arrival trail through rainforest, rocky highlands with a terraced village, a river gorge, a cave system, a waterfall grotto, a ravine camp, the plantation/depot compound holding the captives, a wetland stilt village with boardwalks, and two extraction points. Open it with the **"Go to the River Valley"** button (on the loading screen or the top-right of the game), or add `#valley` to the address.
+The southern part of the one continuous world: a river valley with an arrival trail through rainforest, rocky highlands with a terraced village, a river gorge, a cave system, a waterfall grotto, a ravine camp, the plantation/depot compound holding captives, a wetland stilt village with boardwalks, and two extraction points.
+
+## One world
+- **Layout:** the savanna is in the north (centred on 0, 0). The valley lies south of it, centred on (-77, 500) (`ORIGIN` in `valley/layout.js`), as Nigeria runs from the dry north to the wet south.
+- **The joining land** (`src/land.js`):
+  - **Ground:** blends each area's own ground at its edges into open rolling country, so there are no seams. The savanna plain rises gently over an escarpment onto the valley plateau.
+  - **Road:** the savanna road carries straight on to the plateau's north road.
+  - **Rivers:** both rivers begin at rocky springs at the escarpment.
+- **Light and haze** shift gradually from the warm, clear north to the softer, humid valley as the player walks south (`createAtmosphere`).
+- **Load order:** the valley is built in the background after the game starts, because it is far from the start. Each area's props are hidden when the player is far away.
+- **Captives:** five in the savanna camp and five in the valley compound (store house and shed).
+- **Guards:** the North/Middle Belt five in the savanna village, the southern five at the compound.
+- **Extraction:** delivery works at all three DSS points, with one shared count.
 
 ## Reference images → locations
 | # | Reference | Where it guides the valley | Built from |
@@ -52,7 +64,12 @@ Pieces that came out differently from the prompt:
 - **Plantation roof:** came out bright red and was recoloured to rust locally.
 
 ## Testing (desktop Chromium, software rendering; not a phone)
-- **Route walk:** 12 checks pass: the direct, concealed, wetland, ravine and escort routes, the cave branches, and the grotto-to-breach path (`window.game.simulate()` with the real character controller).
+- **Route walk:** 13 checks pass in the single world. They include the savanna start → road over the escarpment → valley plateau, plus the direct, concealed, wetland, ravine and escort routes, the cave branches, and the grotto-to-breach path (`window.game.simulate()` with the real character controller).
+- **Split rescue:** savanna camp captives were delivered at the savanna DSS van and valley captives at the jetty, counted together.
+- **Phone-mode triangles across the world** (touch emulation, including the shadow pass):
+  - escarpment road: 0.36 million
+  - valley areas: 0.3–0.72 million
+  - savanna start view: 1.0 million, mostly the savanna's existing grass, characters and shadows. This is the next thing to slim for phones.
 - **Inside buildings:** every captive spot in the enterable store house can be reached.
 - **Rescue test:** freed captives followed the player to the jetty and boarded the boat, which left. The same worked at the van. The test path missed two captives, which was a test-path issue: every spot was reachable on its own.
 - **Phone-mode metrics** (touch emulation, phone settings: pixel ratio 1.25, 1024 shadows, shorter draw distance and earlier low detail):

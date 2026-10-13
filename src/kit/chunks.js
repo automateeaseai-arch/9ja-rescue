@@ -62,6 +62,9 @@ export function addInstanced(scene, geometry, material, items, { maxDist = 400, 
       centre.add(p.setFromMatrixPosition(it.m));
     });
     centre.divideScalar(list.length);
+    // Cull distances are measured in world space (the group may be moved).
+    scene.updateMatrixWorld?.(true);
+    centre.applyMatrix4(scene.matrixWorld);
     mesh.computeBoundingSphere();
     mesh.castShadow = shadow;
     mesh.receiveShadow = receive;

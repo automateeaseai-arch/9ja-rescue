@@ -7,25 +7,11 @@ import { spawnHostiles } from './hostiles.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
-import { buildValley } from './valley/build.js';
-
-// Which area to load: the savanna (default) or the River Valley (#valley).
-const AREA = /valley/.test(location.hash + location.search) ? 'valley' : 'savanna';
-function switchArea() {
-  try {
-    location.hash = AREA === 'valley' ? '' : 'valley';
-    location.reload();
-  } catch (err) {
-    console.error(err);
-  }
-}
-for (const id of ['switch-area', 'loading-switch']) {
-  const b = document.getElementById(id);
-  if (b) {
-    b.textContent = AREA === 'valley' ? 'Go to the Savanna' : 'Go to the River Valley';
-    b.addEventListener('click', switchArea);
-  }
-}
+import { buildValley, prepareValley } from './valley/build.js';
+import { buildLand, createAtmosphere, VALLEY_ORIGIN } from './land.js';
+import { HOSTAGE_SPOTS as CAMP_SPOTS } from './camp.js';
+import * as VL from './valley/layout.js';
+import { updateCulling } from './kit/chunks.js';
 
 const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
@@ -70,26 +56,35 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
   const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
-  let world = null, valley = null, sun;
+  // One continuous world: the savanna in the north, the River Valley to the
+  // south, joined by open country that rises gently onto the valley plateau.
+  await step('Building the savanna');
+  if (isPhone) { camera.far = 300; camera.updateProjectionMatrix(); }
+  const world = buildWorld(scene, physics, { phone: isPhone });
+  if (isPhone) world.sky.scale.setScalar(0.75);
+  const sun = world.sun;
   let updateCamp = () => {};
-  if (AREA === 'valley') {
-    valley = await buildValley(scene, physics, { phone: isPhone, step });
-    camera.far = valley.far;
-    camera.updateProjectionMatrix();
-    sun = valley.sun;
-  } else {
-    await step('Building the savanna');
-    world = buildWorld(scene, physics, { phone: isPhone });
-    sun = world.sun;
-    buildCamp(scene, physics).then((f) => { updateCamp = f; }).catch((err) => console.error(err));
+  buildCamp(scene, physics).then((f) => { updateCamp = f; }).catch((err) => console.error(err));
+  await step('Joining the river valley');
+  const prepared = prepareValley();
+  const land = buildLand(scene, physics, { valleyH: prepared.heightAt, phone: isPhone });
+  const atmosphere = createAtmosphere({ scene, world, phone: isPhone });
+  let valley = null;
+
+  // Walking height anywhere (ground, decks, bridges, cave floors) for NPCs.
+  const downRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  function surfaceAt(x, z, yHint) {
+    const g = land.height(x, z);
+    downRay.origin = { x, y: yHint != null ? yHint + 0.45 : g + 0.05, z };
+    const hit = physics.castRay(downRay, 6, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+    return hit ? downRay.origin.y - hit.timeOfImpact : g;
   }
   const input = createInput(canvas);
 
   await step('Loading character');
   loadingFill.style.width = '60%';
-  // Arrival point: on the dirt road south of the village, facing it
-  // (or the forest trail in the River Valley).
-  const spawn = valley ? valley.spawn : new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
+  // Arrival point: on the dirt road south of the village, facing it.
+  const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
   const player = await createPlayer(scene, physics, spawn);
   let charIndex = 0;
   player.setCharacter(await loadCharacter(charIndex));
@@ -116,28 +111,29 @@ async function start() {
     updateSwitchLabel();
   });
 
-  // Hostiles stream in after the game starts, one at a time.
+  // Captives: five in the savanna camp, five in the valley's plantation
+  // compound. Guards: the North/Middle Belt five in the savanna village, the
+  // southern five at the compound.
+  const toWorld = ([x, z]) => [x + VALLEY_ORIGIN.x, z + VALLEY_ORIGIN.z];
+  const hostageSpots = [...CAMP_SPOTS.slice(0, 5), ...[0, 1, 2, 6, 7].map((i) => toWorld(VL.HOSTAGE_SPOTS[i]))];
+  const hostileSpots = [
+    ...[0, 1, 2, 3, 4].map((i) => [-6 + i * 3, 6]),
+    ...[0, 1, 2, 3, 5].map((i) => toWorld(VL.HOSTILE_SPOTS[i])),
+  ];
   const objective = document.querySelector('#hud .objective');
-  const npcOpts = valley ? { spots: valley.hostileSpots, heightAt: valley.surfaceAt } : {};
-  const updateHostiles = spawnHostiles(scene, npcOpts);
-  let updateDss = () => {};
-  const delivered = (name, count, total, rp) => {
-    objective.textContent = `${name} is safe with DSS · ${count} of ${total} delivered · ${rp.toLocaleString()} RP`;
+  const updateHostiles = spawnHostiles(scene, { spots: hostileSpots, heightAt: surfaceAt });
+  objective.textContent = 'Hostages are held in the camp north-east of the village and in the plantation compound in the river valley to the south';
+  const hostages = spawnHostages(scene, (name) => {
+    objective.textContent = `${name} is following you. Take them to DSS: the vehicles by the river west of the village, or the jetty or vans in the valley`;
+  }, { spots: hostageSpots, heightAt: surfaceAt });
+  let deliveredCount = 0;
+  const delivered = (name) => {
+    deliveredCount++;
+    objective.textContent = `${name} is safe with DSS · ${deliveredCount} of ${hostages.total} delivered · ${(deliveredCount * 5000).toLocaleString()} RP`;
   };
-  let hostages;
-  if (valley) {
-    objective.textContent = 'Hostages are held in the plantation compound across the river. Bridge, cave or wetland: choose your way';
-    hostages = spawnHostages(scene, (name) => {
-      objective.textContent = `${name} is following you. Take them to the DSS boat at the jetty or the vehicles west of the compound`;
-    }, { spots: valley.hostageSpots, heightAt: valley.surfaceAt });
-    updateDss = valley.attachHostages(hostages, delivered);
-  } else {
-    objective.textContent = 'Hostages are held in the camp north-east of the village: follow the dirt track';
-    hostages = spawnHostages(scene, (name, count, total) => {
-      objective.textContent = `${name} is following you. Lead them to the DSS vehicles by the river, west of the village`;
-    });
-    buildDss(scene, physics, hostages, delivered).then((f) => { updateDss = f; }).catch((err) => console.error(err));
-  }
+  let updateDss = () => {};
+  buildDss(scene, physics, hostages, delivered).then((f) => { updateDss = f; }).catch((err) => console.error(err));
+  let updateValleyExtraction = () => {};
 
   await step('Preparing graphics');
   renderer.compile(scene, camera);
@@ -151,8 +147,15 @@ async function start() {
     document.getElementById('fire-btn').hidden = false;
   }
 
+  // The valley is far from the start, so it is built while the player begins.
+  buildValley(scene, physics, { phone: isPhone, origin: VALLEY_ORIGIN, prepared }).then((v) => {
+    valley = v;
+    updateValleyExtraction = v.attachHostages(hostages, delivered);
+    if (window.game) window.game.valley = v;
+  }).catch((err) => console.error(err));
+
   // Orbit camera behind the player's shoulder.
-  let yaw = valley ? valley.spawnYaw : 0;
+  let yaw = 0;
   let pitch = 0.25;
   const CAM_DIST = 4.2;
   const head = new THREE.Vector3();
@@ -218,18 +221,27 @@ async function start() {
   });
 
   function updateScene(dt) {
-    if (valley) valley.update(dt, player, camera);
-    else world.update(dt, player.position);
+    world.update(dt, player.position);
+    if (valley) {
+      // Far from the valley (e.g. in the savanna) it is hidden entirely.
+      const p = player.position, o = VALLEY_ORIGIN;
+      const out = Math.hypot(Math.max(0, Math.abs(p.x - o.x) - VL.HALF), Math.max(0, Math.abs(p.z - o.z) - VL.HALF));
+      valley.root.visible = out < (isPhone ? 150 : 230);
+      valley.update(dt, player, camera);
+    }
+    atmosphere(player.position, valley?.caveDim ?? 0);
+    updateCulling(camera.position);
     updateCamp(dt);
     updateHostiles(dt, player.position);
     hostages.update(dt, player);
     updateDss(dt, player);
+    updateValleyExtraction(dt, player);
   }
 
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, area: AREA,
+    hostages, valley, land, surfaceAt,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
