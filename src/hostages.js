@@ -1,10 +1,11 @@
-// Hostages stand in a row behind the player's start point. Walk up to one and
+// Hostages are held in the captive camp. Walk up to one and
 // they follow you in single file — a simple stand-in for the rescue mechanic
 // and a way to check each model's walk animation.
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { loadGlb, idlePose, makeInPlace } from './player.js';
 import { groundHeight } from './world.js';
+import { HOSTAGE_SPOTS } from './camp.js';
 
 const HOSTAGES = [
   { name: 'Bus Driver', url: 'models/hostages/Hostage_01_BusDriver.glb' },
@@ -34,10 +35,9 @@ export function spawnHostages(scene, onRescue) {
         const gltf = await loadGlb(HOSTAGES[i].url);
         const model = cloneSkinned(gltf.scene);
         model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
-        const x = -13.5 + i * 3;
-        const z = 18;
+        const [x, z] = HOSTAGE_SPOTS[i];
         model.position.set(x, groundHeight(x, z), z);
-        model.rotation.y = Math.PI; // face the village
+        model.rotation.y = 0; // face out of the compound, towards the village
         scene.add(model);
         const mixer = new THREE.AnimationMixer(model);
         const clip = (n) => gltf.animations.find((c) => c.name === n);

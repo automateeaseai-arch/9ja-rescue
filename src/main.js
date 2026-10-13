@@ -5,6 +5,7 @@ import { createPlayer, loadCharacter, CHARACTERS, downloadStats } from './player
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { spawnHostages } from './hostages.js';
+import { buildCamp } from './camp.js';
 
 const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
@@ -42,6 +43,7 @@ async function start() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -51,6 +53,8 @@ async function start() {
   await step('Building the savanna');
   const world = buildWorld(scene, physics, { phone: isPhone });
   const { sun } = world;
+  let updateCamp = () => {};
+  buildCamp(scene, physics).then((f) => { updateCamp = f; }).catch((err) => console.error(err));
   const input = createInput(canvas);
 
   await step('Loading character');
@@ -86,7 +90,7 @@ async function start() {
   // Hostiles stream in after the game starts, one at a time.
   const updateHostiles = spawnHostiles(scene);
   const objective = document.querySelector('#hud .objective');
-  objective.textContent = 'Walk up to a hostage and they follow you';
+  objective.textContent = 'Hostages are held in the camp north-east of the village: follow the dirt track';
   const updateHostages = spawnHostages(scene, (name, count, total) => {
     objective.textContent = `${name} is following you · ${count} of ${total} rescued`;
   });
@@ -162,6 +166,7 @@ async function start() {
       acc -= FIXED;
     }
     world.update(dt, player.position);
+    updateCamp(dt);
     updateHostiles(dt, player.position);
     updateHostages(dt, player);
     updateCamera(dt);

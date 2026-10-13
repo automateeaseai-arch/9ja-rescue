@@ -11,7 +11,7 @@ const WORLD_SIZE = 320;
 const wind = { time: { value: 0 } };
 
 // Seeded random so the layout is the same every time the page loads.
-function makeRandom(seed) {
+export function makeRandom(seed) {
   let s = seed >>> 0;
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0;
@@ -24,23 +24,38 @@ export function roadX(z) {
   return Math.sin(z * 0.045) * 7;
 }
 
-// Gentle rolling ground, flat in the middle where the village sits.
+// The captive camp: a cleared compound north-east of the village, reached by
+// a dirt track from the village edge.
+export const CAMP = { x: 50, z: -62, r: 17 };
+const TRACK_FROM = { x: 12, z: -14 };
+
+function distToTrack(x, z) {
+  const ax = CAMP.x - TRACK_FROM.x, az = CAMP.z - TRACK_FROM.z;
+  const t = THREE.MathUtils.clamp(((x - TRACK_FROM.x) * ax + (z - TRACK_FROM.z) * az) / (ax * ax + az * az), 0, 1);
+  return Math.hypot(x - (TRACK_FROM.x + ax * t), z - (TRACK_FROM.z + az * t));
+}
+
+// Gentle rolling ground, flat where the village and the camp sit.
 export function groundHeight(x, z) {
   const hills =
     Math.sin(x * 0.045) * Math.cos(z * 0.04) * 3.2 +
     Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.7) * 0.9;
-  const d = Math.hypot(x, z);
-  const flatten = THREE.MathUtils.smoothstep(d, 22, 50);
-  return hills * flatten;
+  const village = THREE.MathUtils.smoothstep(Math.hypot(x, z), 22, 50);
+  const camp = THREE.MathUtils.smoothstep(Math.hypot(x - CAMP.x, z - CAMP.z), CAMP.r, CAMP.r + 22);
+  return hills * Math.min(village, camp);
 }
 
+// True where vegetation and rocks must not be placed: the road, the camp
+// track and the camp compound.
 function onRoad(x, z, margin = 0) {
-  return z > 4 && Math.abs(x - roadX(z)) < 2.6 + margin;
+  return (z > 4 && Math.abs(x - roadX(z)) < 2.6 + margin) ||
+    distToTrack(x, z) < 2.2 + margin ||
+    Math.hypot(x - CAMP.x, z - CAMP.z) < CAMP.r + margin;
 }
 
 // Bends vertices sideways over time, more strongly the higher they are.
 // `stiffness` sets how much of the sway the lower part of the mesh receives.
-function addWind(material, strength, stiffness = 1.5, base = 0) {
+export function addWind(material, strength, stiffness = 1.5, base = 0) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = wind.time;
     shader.vertexShader = shader.vertexShader
@@ -64,7 +79,7 @@ function addWind(material, strength, stiffness = 1.5, base = 0) {
   return material;
 }
 
-function addFixedCollider(physics, desc, position, rotation) {
+export function addFixedCollider(physics, desc, position, rotation) {
   const body = physics.createRigidBody(
     RAPIER.RigidBodyDesc.fixed()
       .setTranslation(position.x, position.y, position.z)
@@ -82,9 +97,9 @@ function buildSky(scene, sunDir) {
     fog: false,
     uniforms: {
       uSun: { value: sunDir.clone().normalize() },
-      uTop: { value: new THREE.Color('#5d8fc9') },
-      uHorizon: { value: new THREE.Color('#f3c98d') },
-      uGlow: { value: new THREE.Color('#ffb347') },
+      uTop: { value: new THREE.Color('#3f8ee0') },
+      uHorizon: { value: new THREE.Color('#f5e1bc') },
+      uGlow: { value: new THREE.Color('#ffd27a') },
       uTime: wind.time,
     },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
@@ -117,9 +132,9 @@ function buildGround(scene, physics) {
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = [];
-  const dry = new THREE.Color('#c9a160');
-  const grass = new THREE.Color('#8d8a42');
-  const dirt = new THREE.Color('#b0673c');
+  const dry = new THREE.Color('#ddb06a');
+  const grass = new THREE.Color('#a39a4c');
+  const dirt = new THREE.Color('#cf7c43');
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -130,6 +145,8 @@ function buildGround(scene, physics) {
     // Packed red earth around the village and along the road.
     c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x, z), 8, 26));
     if (z > 4) c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.abs(x - roadX(z)), 1.6, 3.4));
+    c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(distToTrack(x, z), 1.2, 2.8));
+    c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x - CAMP.x, z - CAMP.z), CAMP.r - 4, CAMP.r + 3));
     colors.push(c.r, c.g, c.b);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -185,7 +202,7 @@ function buildHouse(scene, physics, cx, cz) {
 
 // ---- Textures painted at start-up (no downloads, no credits) ----
 
-function canvasTexture(size, draw) {
+export function canvasTexture(size, draw) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   draw(c.getContext('2d'), size);
@@ -420,7 +437,7 @@ function buildDust(scene, rand) {
 }
 
 // Bakes a loaded GLB into a single geometry + material for instancing.
-function bakeModel(gltf) {
+export function bakeModel(gltf) {
   gltf.scene.updateMatrixWorld(true);
   let mesh;
   gltf.scene.traverse((o) => { if (o.isMesh && !mesh) mesh = o; });
@@ -439,7 +456,7 @@ function bakeModel(gltf) {
 }
 
 // Places copies of one Meshy model. `items` are [x, z, rotation, scale, sink].
-function placeCopies(scene, model, items, makeCollider) {
+export function placeCopies(scene, model, items, makeCollider) {
   const mesh = new THREE.InstancedMesh(model.geo, model.mat, items.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -452,7 +469,7 @@ function placeCopies(scene, model, items, makeCollider) {
     mesh.setMatrixAt(i, m);
     // Slight tint so repeated copies don't look identical.
     const t = 0.88 + ((i * 37) % 13) / 13 * 0.24;
-    mesh.setColorAt(i, color.setRGB(t, t * (0.88 + ((i * 11) % 7) / 100), t * 0.78));
+    mesh.setColorAt(i, color.setRGB(t * 1.08, t * (0.8 + ((i * 11) % 7) / 100), t * 0.66));
     makeCollider?.(x, y, z, rot, scale, q);
   });
   mesh.castShadow = mesh.receiveShadow = true;
@@ -522,12 +539,13 @@ async function addMeshyPieces(scene, physics, rand) {
 export function buildWorld(scene, physics, { phone = false } = {}) {
   const rand = makeRandom(9);
 
-  const sunDir = new THREE.Vector3(-60, 22, -70);
+  // Late-afternoon sun, high enough for bright, clear light like the reference art.
+  const sunDir = new THREE.Vector3(-60, 48, -70);
   const sky = buildSky(scene, sunDir);
-  scene.fog = new THREE.Fog('#efc68f', 70, 260);
+  scene.fog = new THREE.Fog('#f3dcb2', 110, 320);
 
-  scene.add(new THREE.HemisphereLight('#ffe3b8', '#6e4f33', 1.1));
-  const sun = new THREE.DirectionalLight('#ffc77a', 2.8);
+  scene.add(new THREE.HemisphereLight('#fff3e0', '#a8744a', 1.6));
+  const sun = new THREE.DirectionalLight('#fff0d2', 3.4);
   sun.castShadow = true;
   sun.shadow.mapSize.setScalar(phone ? 1024 : 2048);
   const sc = sun.shadow.camera;
