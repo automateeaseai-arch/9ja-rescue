@@ -146,7 +146,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     for (const p of PROBES[set]) {
       probe.set(p[0], p[1], p[2]).applyQuaternion(yawQ).add(pos);
       if (treeAt(probe.x, probe.y, probe.z)) return 'tree';
-      if (!physics || len < 1e-4) continue;
+      if (!physics || len < 1e-4 || len > 5) continue;   // (a jump in position is a teleport, not flight)
       from.copy(probe).sub(step);
       ray.origin = { x: from.x, y: from.y, z: from.z };
       ray.dir = { x: step.x / len, y: step.y / len, z: step.z / len };
@@ -176,20 +176,84 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     fx?.punch();
   }
 
+  // What the flyer will come down on: the ground, or the water surface above it.
+  function surfaceBelow() {
+    const ground = heightAt(pos.x, pos.z, pos.y);
+    const w = waterAt?.(pos.x, pos.z);
+    return w && w.level > ground ? { y: w.level, ground, water: w } : { y: ground, ground, water: null };
+  }
+
+  // Splash: a white ring spreading on the water and spray thrown up and out.
+  const splash = (() => {
+    const N = 40;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 40).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: '#f4f8f8', transparent: true, opacity: 0, depthWrite: false }));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+    const dot = document.createElement('canvas');
+    dot.width = dot.height = 32;
+    const dc = dot.getContext('2d'), grad = dc.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    dc.fillStyle = grad;
+    dc.fillRect(0, 0, 32, 32);
+    const drops = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#eef6f7', map: new THREE.CanvasTexture(dot), size: 0.14, transparent: true, opacity: 0, depthWrite: false }));
+    ring.visible = drops.visible = false;
+    ring.frustumCulled = drops.frustumCulled = false;
+    scene.add(ring, drops);
+    const v = new Float32Array(N * 3);
+    let t = 99, level = 0;
+    return {
+      start(x, y, z, big) {
+        t = 0; level = y;
+        ring.position.set(x, y + 0.04, z);
+        const p = geo.attributes.position.array;
+        for (let i = 0; i < N; i++) {
+          const a = Math.random() * 6.28, sp = (1 + Math.random() * 2.5) * (big ? 1.4 : 1);
+          p[i * 3] = x; p[i * 3 + 1] = y + 0.1; p[i * 3 + 2] = z;
+          v[i * 3] = Math.cos(a) * sp; v[i * 3 + 1] = (3 + Math.random() * 4) * (big ? 1.3 : 1); v[i * 3 + 2] = Math.sin(a) * sp;
+        }
+        geo.attributes.position.needsUpdate = true;
+        ring.visible = drops.visible = true;
+      },
+      update(dt) {
+        if (t > 2) return;
+        t += dt;
+        ring.scale.setScalar(0.6 + t * 3.2);
+        ring.material.opacity = Math.max(0, 0.8 - t * 0.45);
+        const p = geo.attributes.position.array;
+        for (let i = 0; i < N; i++) {
+          v[i * 3 + 1] -= 9.8 * dt;
+          p[i * 3] += v[i * 3] * dt; p[i * 3 + 1] += v[i * 3 + 1] * dt; p[i * 3 + 2] += v[i * 3 + 2] * dt;
+          if (p[i * 3 + 1] < level) { p[i * 3 + 1] = level - 5; v[i * 3 + 1] = 0; v[i * 3] = v[i * 3 + 2] = 0; }
+        }
+        geo.attributes.position.needsUpdate = true;
+        drops.material.opacity = Math.max(0, 0.95 - t * 0.6);
+        if (t > 2) ring.visible = drops.visible = false;
+      },
+    };
+  })();
+
   function land(ground) {
     const crashed = st.phase === 'snag' && st.crash;
-    if (st.phase === 'snag') hurt?.(Math.round(Math.min(35, 5 + Math.max(0, st.snagY - ground) * 1.5)));
+    const sb = surfaceBelow();
+    const w = sb.water, deep = w && w.level - w.ground > 1.3;
+    // Deep water breaks the fall; the ground or shallow water doesn't.
+    if (st.phase === 'snag' && !deep) hurt?.(Math.round(Math.min(35, 5 + Math.max(0, st.snagY - ground) * 1.5)));
     const snagged = st.phase === 'snag';
     st.phase = 'landed';
     st.snagged = snagged && !crashed;
     st.crashed = crashed;
     st.t = 0;
-    const w = waterAt?.(pos.x, pos.z);
-    player.leaveRide(pos.x, w && w.level > ground ? Math.max(ground, w.level - 1.2) : ground, pos.z);
-    st.landed = { x: pos.x, z: pos.z, y: ground, heading: st.heading };
+    // Into deep water: straight into swimming, head above the surface.
+    // Shallow water: feet on the bottom (wading).
+    player.leaveRide(pos.x, deep ? w.level - 1.25 : sb.ground, pos.z);
+    st.landed = { x: pos.x, z: pos.z, y: w ? w.level : ground, heading: st.heading, water: !!w };
+    if (w) { splash.start(pos.x, w.level, pos.z, -vel.y > 6); fx?.splash(); }
     // The glider comes down just behind the player.
     const g = gear.glider;
-    if (st.kind === 'glider' && g && !snagged) g.position.set(pos.x - Math.sin(st.heading) * 1.2, ground, pos.z - Math.cos(st.heading) * 1.2);
+    if (st.kind === 'glider' && g && !snagged) g.position.set(pos.x - Math.sin(st.heading) * 1.2, st.landed.y, pos.z - Math.cos(st.heading) * 1.2);
   }
 
   const q = new THREE.Quaternion(), e = new THREE.Euler(), seat = new THREE.Vector3(), up = new THREE.Vector3();
@@ -229,6 +293,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
 
   const fwd = new THREE.Vector3();
   function update(dt, input) {
+    splash.update(dt);
     if (st.phase === 'off') return;
     st.t += dt;
     const s = input.state;
@@ -264,21 +329,29 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
       player.ride({ pos: pos.clone(), heading: st.heading, show: true, quat: q.setFromEuler(e).clone(), pose: { clip: 'ropeHang', rate: 2 }, noRifle: true });
       st.camDist = 6; st.camHeight = 1.4;
       fx?.wind(0.1, 600);
-      const ground = heightAt(pos.x, pos.z, pos.y);
-      if (pos.y <= ground) land(ground);
+      const sb = surfaceBelow();
+      if (pos.y <= sb.y) land(sb.ground);
       return;
     }
     if (st.phase === 'landed') {
       // The parachute or glider settles behind the player, tips over and is gone.
       const g = gear[st.kind], L = st.landed;
-      if (g && !st.snagged) {
+      if (g && !st.snagged && L.water) {
+        // On water: falls flat onto the surface, floats a moment, then sinks.
+        const flat = Math.min(1, st.t * 1.4);
+        g.visible = st.t < 6;
+        g.quaternion.setFromEuler(e.set(-1.5 * flat, L.heading, 0, 'YXZ'));
+        g.scale.y = Math.max(0.35, g.scale.y - dt * 0.6);
+        g.position.y = Math.max(L.y - 0.2 - Math.max(0, st.t - 2.5) * 0.35, g.position.y - dt * 3);
+        if (st.t < 0.05) splash.start(g.position.x, L.y, g.position.z, false);
+      } else if (g && !st.snagged) {
         // Settles to the ground and falls over backwards, then is gone.
         g.visible = st.t < 2.6;
         g.position.y = Math.max(L.y - 0.3, g.position.y - dt * 3);
         g.quaternion.setFromEuler(e.set(-Math.min(1.45, st.t * 1.1), L.heading, 0, 'YXZ'));
         g.scale.y = Math.max(0.35, g.scale.y - dt * 0.6);
       }
-      if (st.t > 3) st.phase = 'off';
+      if (st.t > (L.water ? 6 : 3)) st.phase = 'off';
       fx?.wind(0, 400);
       return;
     }
@@ -287,7 +360,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     const steerIn = THREE.MathUtils.clamp(s.moveX || 0, -1, 1);
     const push = THREE.MathUtils.clamp(s.moveY || 0, -1, 1);
     st.steer = THREE.MathUtils.damp(st.steer, steerIn, 4, dt);
-    const ground = heightAt(pos.x, pos.z, pos.y);
+    const sb = surfaceBelow(), ground = sb.y;
 
     if (st.phase === 'fall') {
       // Freefall: the air slows the plane's speed; turning the body steers a little.
@@ -308,7 +381,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
       st.camDist = 6; st.camHeight = 0.6;
       fx?.wind(0.25 + Math.min(1, -vel.y / 30) * 0.6, 900 + Math.min(1, -vel.y / 30) * 1400);
       if ((jumpPressed && st.t > 0.4) || st.t > K.free) deploy();
-      if (pos.y <= ground) land(ground);
+      if (pos.y <= ground) land(sb.ground);
       else { const c = collide('fall'); if (c) snag(c); }
       return;
     }
@@ -333,7 +406,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     player.ride({ pos: pos.clone(), heading: st.heading, show: true, quat: bodyQ.clone(), pose: K.pose, noRifle: true });
     st.camDist = K.camDist; st.camHeight = K.camHeight;
     fx?.wind(0.12 + st.speed / 60, 500);
-    if (pos.y <= ground + 0.02) land(ground);
+    if (pos.y <= ground + 0.02) land(sb.ground);
     else { const c = collide(st.open > 0.6 ? st.kind : 'fall'); if (c) snag(c); }
   }
 
@@ -439,7 +512,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     get camDist() { return st.camDist; },
     get camHeight() { return st.camHeight; },
     get timeLeft() { return Math.max(0, FLY_TIME - st.since); },
-    get altitude() { return pos.y - heightAt(pos.x, pos.z, pos.y); },
+    get altitude() { return pos.y - surfaceBelow().y; },
     st,
     plane: group,
     pos,
