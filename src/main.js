@@ -6,6 +6,7 @@ import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { createFx } from './fx.js';
 import { createCombat } from './combat.js';
+import { createPickups } from './pickups.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
@@ -152,6 +153,18 @@ async function start() {
     deliveredCount++;
     objective.textContent = `${name} is safe with DSS · ${deliveredCount} of ${hostages.total} delivered · ${(deliveredCount * 5000).toLocaleString()} RP`;
   };
+  // First-aid kits along the routes: savanna, the road south, and the valley
+  // (plateau trail, cave supply chamber, grotto, near the compound, ravine camp, wetland).
+  const kitSpots = [
+    [roadX(14) + 3, 14], [22, -30], [40, -50], [-44, 30],
+    [land.roadXAt(330) + 4, 330],
+    ...[[VL.VIEWPOINT.x - 6, VL.VIEWPOINT.z + 4], [VL.GROTTO.x + 9, VL.GROTTO.z + 6], [VL.GATES.east.x + 14, VL.GATES.east.z - 6],
+      [VL.RAVINE_CAMP.x + 4, VL.RAVINE_CAMP.z + 3]].map(toWorld),
+    // On the boardwalk platform round the big tree (searched for from 3 m above the ground).
+    (([x, z]) => [x, z, land.height(x, z) + 3])(toWorld([VL.BOARDWALK_HUB.x + 3.5, VL.BOARDWALK_HUB.z])),
+    [...toWorld([VL.CAVE.chambers[1].x + 1.5, VL.CAVE.chambers[1].z + 1.5]), VL.CAVE.floor.west + 1],
+  ];
+  const pickups = createPickups(scene, { spots: kitSpots, heightAt: surfaceAt, heal: (n) => combat.heal(n), fx });
   let updateDss = () => {};
   buildDss(scene, physics, hostages, delivered).then((f) => { updateDss = f; }).catch((err) => console.error(err));
   let updateValleyExtraction = () => {};
@@ -236,7 +249,7 @@ async function start() {
     input.update();
     acc += dt;
     while (acc >= FIXED) {
-      player.update(FIXED, input, yaw);
+      player.update(FIXED, input, yaw, pitch);
       physics.step();
       acc -= FIXED;
     }
@@ -259,6 +272,7 @@ async function start() {
     updateCamp(dt);
     hostiles.update(dt, player);
     combat.update(dt);
+    pickups.update(dt, player);
     hostages.update(dt, player);
     updateDss(dt, player);
     updateValleyExtraction(dt, player);
@@ -267,13 +281,13 @@ async function start() {
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, land, surfaceAt, hostiles, combat,
+    hostages, valley, land, surfaceAt, hostiles, combat, pickups,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
       const idle = { state: move, consumeJump: () => false, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
       for (let i = 0; i < seconds * 60; i++) {
-        player.update(FIXED, idle, yaw);
+        player.update(FIXED, idle, yaw, pitch);
         physics.step();
         updateScene(FIXED);
       }

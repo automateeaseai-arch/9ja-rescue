@@ -112,6 +112,21 @@ export async function createPlayer(scene, physics, spawn) {
   const root = new THREE.Group();
   scene.add(root);
 
+  // Rifle (Meshy model from the owner's picture): in the right hand while
+  // aiming, slung across the back otherwise. Placed in world space each frame.
+  const RIFLE_SCALE = 0.45;                                  // about 85 cm long
+  const GRIP = new THREE.Vector3(0.32, 0.22, 0).multiplyScalar(RIFLE_SCALE);
+  const MUZZLE = new THREE.Vector3(-0.97, 0.43, 0);
+  const RIFLE_SIZE = new THREE.Vector3(RIFLE_SCALE, RIFLE_SCALE, RIFLE_SCALE);
+  let rifle = null;
+  loadGlb('models/items/Rifle.glb').then((gltf) => {
+    rifle = gltf.scene;
+    rifle.scale.setScalar(RIFLE_SCALE);
+    rifle.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+    rifle.matrixAutoUpdate = false;
+    scene.add(rifle);
+  }).catch((err) => console.error(err));
+
   let model = null, mixer = null, actions = null;
   let vy = 0;
   let grounded = false;
@@ -192,7 +207,40 @@ export async function createPlayer(scene, physics, spawn) {
     pointBone(bones.RightForeArm, bones.RightHand, punchDir, w);
   }
 
-  function update(dt, input, cameraYaw) {
+  const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _p = new THREE.Vector3(), _basis = new THREE.Matrix4();
+  // Orients the rifle so its barrel points along `dir` with its top towards `up`,
+  // then moves it so local point `anchor` (scaled) sits at `at`.
+  function placeRifle(dir, up, at, anchor) {
+    _x.copy(dir).negate();                              // the model's muzzle is at local -X
+    _y.copy(up).addScaledVector(_x, -_x.dot(up)).normalize();
+    _z.crossVectors(_x, _y);
+    _basis.makeBasis(_x, _y, _z);
+    rifle.matrix.copy(_basis).scale(RIFLE_SIZE);
+    _p.copy(anchor).applyMatrix4(_basis);
+    rifle.matrix.setPosition(at.x - _p.x, at.y - _p.y, at.z - _p.z);
+    rifle.matrixWorldNeedsUpdate = true;
+  }
+  const _dir = new THREE.Vector3(), _up = new THREE.Vector3(), _at = new THREE.Vector3(), _c = new THREE.Vector3(0, 0.3 * RIFLE_SCALE, 0);
+  function updateRifle(pitch) {
+    if (!rifle || !model) return;
+    rifle.visible = root.visible;
+    const fx = Math.sin(facing), fz = Math.cos(facing);
+    if (aim > 0.5 && bones.RightHand) {
+      _dir.set(fx * Math.cos(pitch), -Math.sin(pitch), fz * Math.cos(pitch));
+      bones.RightHand.getWorldPosition(_at);
+      placeRifle(_dir, _up.set(0, 1, 0), _at, GRIP);
+    } else {
+      // Across the back, barrel up over the left shoulder, sights facing out.
+      const sp = bones.Spine02 ?? bones.Spine01;
+      if (sp) sp.getWorldPosition(_at); else _at.copy(root.position).y += 1.3;
+      _at.x -= fx * 0.3; // outside the backpack
+      _at.z -= fz * 0.3;
+      _dir.set(fz * 0.55, 0.85, -fx * 0.55).normalize();   // up and towards the left shoulder
+      placeRifle(_dir, _up.set(-fx, 0, -fz), _at, _c);
+    }
+  }
+
+  function update(dt, input, cameraYaw, cameraPitch = 0.2) {
     const s = input.state;
     const mag = state.disabled ? 0 : Math.min(1, Math.hypot(s.moveX, s.moveY));
     if (input.consumePunch?.() && punchT < 0 && !state.disabled) punchT = 0;
@@ -278,6 +326,8 @@ export async function createPlayer(scene, physics, spawn) {
         const t = punchT;
         punchPose(t < PUNCH_STRIKE ? t / PUNCH_STRIKE : t < 0.2 ? 1 : 1 - (t - 0.2) / (PUNCH_TIME - 0.2));
       }
+      model.updateMatrixWorld(true);
+      updateRifle(cameraPitch);
     }
   }
 
@@ -295,6 +345,7 @@ export async function createPlayer(scene, physics, spawn) {
     state,
     // Where shots leave from: the right hand, a little forward.
     muzzle(out = _m) {
+      if (rifle && aim > 0.5) return out.copy(MUZZLE).applyMatrix4(rifle.matrix);
       if (bones.RightHand) bones.RightHand.getWorldPosition(out);
       else out.copy(root.position).y += 1.4;
       out.x += Math.sin(facing) * 0.35;

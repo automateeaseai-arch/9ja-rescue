@@ -13,7 +13,7 @@ Landscape, third-person 3D rescue game for **mobile web browsers** (fictional Ni
 ## Where things live
 - Playable link (private claude.ai artifact; republish to the same URL): https://claude.ai/artifact/2a5tDXarnH6abmbXxjHrzP
 - Branch: `ccr-8667c989-hiwgos` on `automateeaseai-arch/9ja-rescue`
-- Meshy API: `https://api.meshy.ai` (the proxy injects the key; check balance with `GET /openapi/v1/balance`). Credits reset monthly around **13 November 2026**. **Balance (13 Oct, after the River Valley kit): 635 credits.** Environment budget agreed by the owner: 700 ceiling, 660 used (`docs/river-valley.md` has the ledger).
+- Meshy API: `https://api.meshy.ai` (the proxy injects the key; check balance with `GET /openapi/v1/balance`). Credits reset monthly around **13 November 2026**. **Balance (13 Oct, after the rifle and first-aid kit): 575 credits.** Environment budget agreed by the owner: 700 ceiling, 660 used (`docs/river-valley.md` has the ledger).
 
 ## Tech stack
 Three.js 0.170 (graphics), Rapier 0.14 compat (physics), Vite 5 (dev server/build). Run `npm install`, then `npm run dev` (port 5173). Asset tools use gltf-transform, sharp and meshoptimizer (dev dependencies).
@@ -22,10 +22,11 @@ Three.js 0.170 (graphics), Rapier 0.14 compat (physics), Vite 5 (dev server/buil
 | File | What it does |
 |---|---|
 | `main.js` | Start-up with step and KB counter on the loading screen (errors shown on screen), renderer (lower resolution and shadows on phones), camera with wall collision, game loop. Test hooks on `window.game`: `look(yaw,pitch)`, `player.teleport(x,y,z)`, `simulate(seconds, input)`, `hostages`. |
-| `player.js` | Model loading (`loadGlb`: meshopt decoder; base64 text in the share build; downloads abandoned after 30 s without data, one retry). Characters load on demand when switched to. Rapier kinematic character controller: walk 1.7 m/s, run 5 m/s, jump about 1.4 m high with forward momentum. Animation blending: idle/walk/run, plus arms-only aim/fire while Fire is held. |
+| `player.js` | Model loading (`loadGlb`: meshopt decoder; base64 text in the share build; downloads abandoned after 30 s without data, one retry). Characters load on demand when switched to. Rapier kinematic character controller: walk 1.7 m/s, run 5 m/s, jump about 1.4 m high with forward momentum. Animation blending: idle/walk/run, plus arms-only aim/fire while Fire is held. Meshy rifle (`models/items/Rifle.glb`) placed in world space each frame: in the right hand pointing where the camera aims while aiming, slung across the back otherwise. Code punch pose (`pointBone`). |
 | `anims.js` | Shared clips (Idle, shooting, sit cross-legged) in `public/models/anims/Shared_Anims.glb`, retargeted to any character (rotations only, hip height scaled). Upper/lower body split helpers. |
 | `input.js` | WASD/Shift/Space, F or right mouse to fire, E to punch, drag to look; phone: floating left joystick, right-side swipe to look, Jump, Fire and Punch buttons. |
 | `combat.js` | Player combat: hold Fire to aim (camera closes in, crosshair) and shoot every 0.22 s (3 body hits or 1 head hit knock a guard out; small aim help, more on phones); punch (3 from the front, or one **takedown** from behind on a guard who hasn't noticed you, with an on-screen hint); health bar, red edge when hit, regenerates after 5 s; knocked out → back at the savanna road or the valley's north road after 3 s. |
+| `pickups.js` | First-aid kits (Meshy model) hovering over a green ring at 11 spots along the routes (savanna, road south, valley incl. the cave supply chamber and the boardwalk hub); +50 health once each, left alone at full health. Spots are listed in `main.js`. |
 | `fx.js` | Code-built tracers, muzzle flashes and synthesised gunshot/punch sounds (no downloads). |
 | `world.js` | Terrain (rolling hills, flattened at the village, camp and DSS; carved river bed), dirt road, camp track and DSS track. Sky shader with clouds, bright daylight, dust. Code-built acacias, bushes and grass on canvas-painted textures with wind sway. Meshy huts, houses and boulders copied many times. Stacked granite kopjes with a crack and lichen shader (`makeGranite`). `rockCollider`/`placeCopies` helpers. Exports `CAMP`, `DSS`, `riverX`, `groundHeight`. |
 | `camp.js` | Captive camp at (50, -62): enterable stick-lattice hut, tarp canopy, stick fences, flapping tarps (`tarpMaterial`, `cloth`), Meshy crates, drums and tables, code jerry cans and clay pots. `HOSTAGE_SPOTS`. |
@@ -59,7 +60,7 @@ River Valley (south of the savanna, reached by the road over the escarpment): ra
   - **DSS point:** Meshy SUV and van.
   - **Everything else:** built in code.
 - **Animations:** shared Idle, aim/fire (arms only) and Sit, used on every character.
-- **Credits spent:** about 1,019 of 1,020 this month.
+- **Credits spent:** about 1,019 of 1,020 last month; this month 480 (River Valley kit) + 60 (rifle, first-aid kit).
 - **Fixes along the way:** loading on slow phone connections (all models compressed: 41.6 MB to 17.3 MB, on-demand loading); rocks made solid (colliders match the visible size); brighter lighting; higher, forward-moving jump.
 - **One continuous world (13 Oct):** no area switching. The savanna road climbs gently over an escarpment onto the valley plateau. Five captives are in the savanna camp and five in the valley compound.
 - **River Valley (13 Oct):**

@@ -61,6 +61,14 @@ All runtime GLBs are compressed for slow phone connections (WebP textures at 102
 
 All models face +Z, have their origin at the feet and use metres. Shared clips in `public/models/anims/Shared_Anims.glb` (121 KB, skeleton only): Idle, Walk_Forward_While_Shooting_inplace (used upper-body only as aim/fire) and Sit_Cross_Legged_on_Floor, from Meshy animation task `01a13412-067c-716c-9e81-5ff310512d61` on the Female Soldier rig (9 credits). They are retargeted to every character at runtime (rotations only, hip height scaled).
 
+## Items register
+From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
+
+| Item | File | Details | Use |
+|---|---|---|---|
+| Rifle (carbine, olive furniture, red-dot sight) | `public/models/items/Rifle.glb` | 354,956 B, 9,956 tris, 1024 px texture. Task `01a13556-4f0c-7275-8c91-0725d8ab7857`, 30 credits | Player's rifle: in the right hand while aiming (shots leave its muzzle), slung across the back otherwise. Shown 85 cm long |
+| First-aid kit (white and teal case, green cross) | `public/models/items/First_Aid_Kit.glb` | 130,604 B, 2,989 tris, 512 px texture. Task `01a13556-53d4-743b-8614-635d7ac1bfe7`, 30 credits | 11 kits along the routes, hovering over a green ring; +50 health, once each, only taken when hurt |
+
 ## Environment register (northern savanna)
 | Piece | File | Details | Rig | In game |
 |---|---|---|---|---|

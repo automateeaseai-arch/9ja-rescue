@@ -154,5 +154,12 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, r
     fx.update(dt);
   }
 
-  return { update, hurt, stats: st };
+  // First-aid: returns false (kit not used) when health is already full.
+  function heal(amount) {
+    if (player.state.disabled || st.health >= MAX_HEALTH - 0.5) return false;
+    st.health = Math.min(MAX_HEALTH, st.health + amount);
+    return true;
+  }
+
+  return { update, hurt, heal, stats: st };
 }

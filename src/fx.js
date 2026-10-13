@@ -99,6 +99,20 @@ export function createFx(scene) {
       play(v, distance > 40 ? 900 : 2600, 0.25 + Math.min(distance, 60) * 0.004);
     },
     punch() { play(0.6, 260, 0.12); },
+    // Two rising notes when a first-aid kit is picked up.
+    chime() {
+      if (!ctx || ctx.state !== 'running') return;
+      [660, 990].forEach((f, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * 0.1;
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.4);
+      });
+    },
     update(dt) {
       for (const m of tracers) {
         if (!m.visible) continue;
