@@ -6,7 +6,8 @@
 // 14 m while the player crouches);
 // noticing takes a moment, shown by "?" turning to "!". Anyone behind them
 // goes unseen, so they can be taken down with a punch from behind. Once
-// alerted they chase, stop with a clear shot and fire in bursts; if they lose
+// alerted they chase, stop with a clear shot and fire rounds of 3 bullets
+// 0.4 s apart; if they lose
 // the player they search the last place they saw them, then go back to their
 // post. When a guard is hit, every guard within 12 m is alerted at once and
 // attacks too. Knocked-out guards play Meshy's knock-down (hit from the
@@ -36,7 +37,8 @@ export const VIEW_RANGE = 28;              // metres
 export const VIEW_COS = Math.cos(THREE.MathUtils.degToRad(60)); // half-angle of the view cone
 const CROUCH_VIEW = 0.5;                   // crouching halves how far away they notice the player
 const ALERT_RADIUS = 12;                   // a hit alerts every guard this close
-const SHOOT_RANGE = 16;                    // stop and shoot within this distance
+const SHOOT_RANGE = 16;
+const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4; // rounds of 3 bullets, 0.4 s between rounds                    // stop and shoot within this distance
 const WALK = 1.6, RUN = 4.0;               // the player runs at 5, so they can be outrun
 const ACTIVE_RANGE = 140;                  // guards further away are frozen (saves work)
 const HALF = 0.55, RADIUS = 0.3, FOOT = HALF + RADIUS;
@@ -172,7 +174,9 @@ export function spawnHostiles(scene, opts = {}) {
     }
   }
 
-  function knockOut(u, fromPos) {
+  // fromPos: where the blow came from (sets the fall direction);
+  // playerPos: where the guards nearby will look for the player.
+  function knockOut(u, fromPos, playerPos = fromPos) {
     u.state = 'down';
     u.health = 0;
     u.fall = 0.001;
@@ -186,7 +190,7 @@ export function spawnHostiles(scene, opts = {}) {
     fall.reset().play();
     fall.setEffectiveWeight(1);
     u.mark.visible = false;
-    alertNearby(u, fromPos);
+    alertNearby(u, playerPos);
     physics.removeRigidBody(u.body); // the player can step over them
     u.body = null;
   }
@@ -235,7 +239,7 @@ export function spawnHostiles(scene, opts = {}) {
     muzzle.z += Math.cos(yaw) * 0.5;
     const d = u.model.position.distanceTo(player.position);
     // Harder to hit at range and when the player runs.
-    let chance = THREE.MathUtils.clamp(0.45 - d * 0.015, 0.1, 0.45);
+    let chance = THREE.MathUtils.clamp(0.26 - d * 0.011, 0.06, 0.26);
     if (player.speed > 3) chance *= 0.6;
     const hit = Math.random() < chance;
     aimAt.copy(player.position).y += 1.1 + (hit ? 0 : (Math.random() - 0.3) * 1.2);
@@ -300,7 +304,7 @@ export function spawnHostiles(scene, opts = {}) {
             if (u.shotTimer <= 0) {
               shoot(u, player);
               u.burst++;
-              if (u.burst >= 3) { u.burst = 0; u.shotTimer = 1.2 + Math.random() * 0.8; } else u.shotTimer = 0.14;
+              if (u.burst >= BURST) { u.burst = 0; u.shotTimer = BURST_GAP; } else u.shotTimer = BULLET_GAP;
             }
           }
         } else {
@@ -355,15 +359,16 @@ export function spawnHostiles(scene, opts = {}) {
     units,
     update,
     // Damage from the player. `kind` is 'shot' or 'punch'.
-    hit(u, damage, fromPos) {
+    hit(u, damage, fromPos, playerPos = fromPos) {
       if (u.state === 'down') return;
       u.health -= damage;
-      if (u.health <= 0) { knockOut(u, fromPos); return; }
+      if (u.health <= 0) { knockOut(u, fromPos, playerPos); return; }
       u.flinch = 1;
       u.stagger = 0.5;
-      alert(u, fromPos);
-      alertNearby(u, fromPos);
+      alert(u, playerPos);
+      alertNearby(u, playerPos);
     },
+    alertTo: (u, playerPos) => alert(u, playerPos),
     knockOut,
     // A takedown works on a guard who hasn't noticed the player and is
     // facing away (the player is outside their view cone).

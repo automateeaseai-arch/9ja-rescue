@@ -104,9 +104,14 @@ const CLIMB_SPEED = 0.9;     // metres per second up a wall or rock
 const CLIMB_MIN = 1.0, CLIMB_MAX = 3.8; // ledge heights (above the feet) that can be climbed
 const PUNCH_RATE = 1.6;      // jab clip playback speed
 const PUNCH_STRIKE = 0.52;   // clip time (s) when the fist lands
+const THROW_RATE = 1.8;      // throw clip playback speed
+const THROW_START = 0.6;     // clip time the throw starts from (skips the slow wind-up)
+const THROW_RELEASE = 1.83;  // clip time (s) when the grenade leaves the hand
+const THROW_LEN = 2.45;      // clip time (s) when the throw is finished
 const PUNCH_LEN = 1.15;      // clip time (s) when the jab is back in guard
 
 // opts.waterAt(x, z) → { level, ground } where there is water, else null.
+// opts.canThrow() / opts.onThrow(): grenade cooldown, checked when a throw starts.
 export async function createPlayer(scene, physics, spawn, opts = {}) {
   const sharedAnims = await loadSharedAnims();
   const body = physics.createRigidBody(
@@ -146,9 +151,11 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   let aim = 0;
   const airVel = new THREE.Vector3();
   let punchT = -1;            // clip time of the jab in progress, or -1
+  let throwT = -1;            // clip time of the throw in progress, or -1
   let bones = {};
   // mode: 'ground', 'swim' or 'climb'
-  const state = { disabled: false, strike: false, aiming: false, crouch: false, mode: 'ground' };
+  // strike / release: set for one moment when a punch lands or a grenade leaves the hand.
+  const state = { disabled: false, strike: false, release: false, aiming: false, crouch: false, mode: 'ground' };
   let crouchW = 0, swimMove = 0;
   const climb = { top: 0, dir: new THREE.Vector3(), over: 0, dist: 0, moved: 0 };
 
@@ -183,13 +190,13 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       crouchWalkLegs: mixer.clipAction(lowerBody(crouchWalk)),
       shoot: mixer.clipAction(upperBody(retarget(A.shoot, model))),
       punch: mixer.clipAction(upperBody(retarget(A.punch, model))),
+      throw: mixer.clipAction(upperBody(retarget(A.throw, model))),
       swimIdle: mixer.clipAction(retarget(A.swimIdle, model)),
       swimForward: mixer.clipAction(retarget(A.swimForward, model)),
       climb: mixer.clipAction(retarget(A.climb, model, 'loopUp')),
     };
     for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
-    actions.punch.setLoop(THREE.LoopOnce);
-    actions.punch.clampWhenFinished = true;
+    for (const a of [actions.punch, actions.throw]) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
     actions.idle.setEffectiveWeight(1);
   }
 
@@ -292,9 +299,20 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     const crouchPressed = input.consumeCrouch?.();
     if (crouchPressed && state.mode === 'ground' && !state.disabled) state.crouch = !state.crouch;
     if (state.mode !== 'ground' || (s.run && mag > 0.05)) state.crouch = false;
-    if (input.consumePunch?.() && punchT < 0 && !state.disabled && state.mode === 'ground') {
+    if (input.consumePunch?.() && punchT < 0 && throwT < 0 && !state.disabled && state.mode === 'ground') {
       punchT = 0;
       actions?.punch.reset().play();
+    }
+    if (input.consumeThrow?.() && throwT < 0 && punchT < 0 && !state.disabled && state.mode === 'ground' && opts.canThrow?.() !== false) {
+      opts.onThrow?.();
+      throwT = THROW_START;
+      if (actions) { actions.throw.reset().play(); actions.throw.time = THROW_START; }
+    }
+    if (throwT >= 0) {
+      const before = throwT;
+      throwT += dt * THROW_RATE;
+      if (before < THROW_RELEASE && throwT >= THROW_RELEASE) state.release = true;
+      if (throwT > THROW_LEN) throwT = -1;
     }
     if (punchT >= 0) {
       const before = punchT;
@@ -398,13 +416,13 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   }
 
   const ALL = ['idle', 'walk', 'run', 'crouchIdle', 'crouchWalk', 'idleLegs', 'walkLegs', 'runLegs', 'crouchIdleLegs',
-    'crouchWalkLegs', 'shoot', 'punch', 'swimIdle', 'swimForward', 'climb'];
+    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb'];
   const W = {};
   function animate(dt) {
     for (const k of ALL) W[k] = 0;
     const clamp01 = (v) => THREE.MathUtils.clamp(v, 0, 1);
     crouchW = THREE.MathUtils.damp(crouchW, state.crouch ? 1 : 0, 10, dt);
-    aim = THREE.MathUtils.damp(aim, state.aiming && punchT < 0 ? 1 : 0, 12, dt);
+    aim = THREE.MathUtils.damp(aim, state.aiming && punchT < 0 && throwT < 0 ? 1 : 0, 12, dt);
     swimMove = THREE.MathUtils.damp(swimMove, state.mode === 'swim' && speed > 0.3 ? 1 : 0, 4, dt);
     // Swimming forward lies flat: lift the body to the surface.
     model.position.y = state.mode === 'swim' ? swimMove * 0.7 : 0;
@@ -421,15 +439,18 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       const idleW = Math.max(0, 1 - walkW - runW);
       // Punch: the jab clip fades in and out on the arms.
       const punchW = punchT < 0 ? 0 : Math.min(1, punchT / 0.15, (PUNCH_LEN - punchT) / 0.3);
-      const upper = Math.min(1, aim + punchW); // arms busy: the legs carry on alone
+      const throwW = throwT < 0 ? 0 : Math.min(1, (throwT - THROW_START) / 0.2, (THROW_LEN - throwT) / 0.4);
+      const upper = Math.min(1, aim + punchW + throwW); // arms busy: the legs carry on alone
       const body = { idle: idleW * (1 - crouchW), walk: walkW * (1 - crouchW), run: runW * (1 - crouchW),
         crouchIdle: idleW * crouchW, crouchWalk: (walkW + runW) * crouchW };
       for (const [k, w] of Object.entries(body)) {
         W[k] = w * (1 - upper);
         W[k + 'Legs'] = w * upper;
       }
-      W.shoot = aim * (1 - punchW);
+      W.shoot = aim * (1 - punchW) * (1 - throwW);
       W.punch = punchW;
+      W.throw = throwW;
+      actions.throw.timeScale = THROW_RATE;
       actions.walk.timeScale = actions.walkLegs.timeScale = Math.max(0.6, speed / WALK_SPEED);
       actions.run.timeScale = actions.runLegs.timeScale = Math.max(0.7, speed / RUN_SPEED);
       actions.crouchWalk.timeScale = actions.crouchWalkLegs.timeScale = Math.max(0.6, speed / 1.3);
@@ -452,6 +473,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     update,
     get position() { return root.position; },
     get crouching() { return state.crouch; },
+    get throwing() { return throwT >= 0; },
+    hand(out = new THREE.Vector3()) { return bones.RightHand ? bones.RightHand.getWorldPosition(out) : out.copy(root.position).setY(root.position.y + 1.6); },
     findLedge: (dir) => findLedge(body.translation(), dir),
     get facing() { return facing; },
     get speed() { return speed; },

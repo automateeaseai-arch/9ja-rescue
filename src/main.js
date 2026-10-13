@@ -7,6 +7,7 @@ import { spawnHostiles } from './hostiles.js';
 import { createFx } from './fx.js';
 import { createCombat } from './combat.js';
 import { createPickups } from './pickups.js';
+import { createGrenades } from './grenades.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
@@ -102,7 +103,10 @@ async function start() {
   loadingFill.style.width = '60%';
   // Arrival point: on the dirt road south of the village, facing it.
   const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
-  const player = await createPlayer(scene, physics, spawn, { waterAt });
+  let grenades = null;
+  const player = await createPlayer(scene, physics, spawn, {
+    waterAt, canThrow: () => !!grenades?.ready, onThrow: () => grenades.begin(),
+  });
   let charIndex = 0;
   player.setCharacter(await loadCharacter(charIndex));
   loadingFill.style.width = '100%';
@@ -179,6 +183,8 @@ async function start() {
     (([x, z]) => [x, z, land.height(x, z) + 3])(toWorld([VL.BOARDWALK_HUB.x + 3.5, VL.BOARDWALK_HUB.z])),
     [...toWorld([VL.CAVE.chambers[1].x + 1.5, VL.CAVE.chambers[1].z + 1.5]), VL.CAVE.floor.west + 1],
   ];
+  grenades = createGrenades({ scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer: (n) => combat.hurt(n) });
+  const throwBtn = document.getElementById('throw-btn');
   const pickups = createPickups(scene, { spots: kitSpots, heightAt: surfaceAt, heal: (n) => combat.heal(n), fx });
   let updateDss = () => {};
   buildDss(scene, physics, hostages, delivered).then((f) => { updateDss = f; }).catch((err) => console.error(err));
@@ -196,6 +202,7 @@ async function start() {
     document.getElementById('fire-btn').hidden = false;
     document.getElementById('punch-btn').hidden = false;
     document.getElementById('crouch-btn').hidden = false;
+    document.getElementById('throw-btn').hidden = false;
   }
 
   // The valley is far from the start, so it is built while the player begins.
@@ -242,6 +249,12 @@ async function start() {
     camTarget.x += Math.cos(yaw) * 0.5;
     camTarget.z -= Math.sin(yaw) * 0.5;
     camera.lookAt(camTarget);
+    // Grenade blasts shake the camera.
+    const sh = grenades?.shake ?? 0;
+    if (sh > 0) {
+      camera.position.x += (Math.random() - 0.5) * sh * 0.25;
+      camera.position.y += (Math.random() - 0.5) * sh * 0.25;
+    }
 
     // Keep the sun's shadow area centred on the player.
     sun.position.copy(player.position).add(sun.userData.offset);
@@ -290,6 +303,8 @@ async function start() {
     combat.update(dt);
     crouchBtn.classList.toggle('on', player.crouching);
     pickups.update(dt, player);
+    grenades.update(dt);
+    throwBtn.classList.toggle('wait', !grenades.ready);
     hostages.update(dt, player);
     updateDss(dt, player);
     updateValleyExtraction(dt, player);
@@ -298,11 +313,12 @@ async function start() {
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
-    hostages, valley, land, surfaceAt, hostiles, combat, pickups,
+    hostages, valley, land, surfaceAt, hostiles, combat, pickups, grenades,
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
     simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
       const idle = { state: move, consumeJump: () => { const j = !!move.jump; move.jump = false; return j; },
+        consumeThrow: () => { const t = !!move.throw; move.throw = false; return t; },
         consumeCrouch: () => { const c = !!move.crouch; move.crouch = false; return c; }, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
       for (let i = 0; i < seconds * 60; i++) {
         player.update(FIXED, idle, yaw, pitch);

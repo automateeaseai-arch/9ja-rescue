@@ -4,6 +4,7 @@
 //   Shared_Anims.glb: Idle, shooting, sitting cross-legged
 //   Combat_Anims.glb: jab, knock-down, fall forward, swim idle/forward,
 //                     crouch idle/walk, climbing up a wall
+//   Throw_Anim.glb:   over-shoulder throw (grenades)
 import * as THREE from 'three';
 import { loadGlb } from './player.js';
 
@@ -22,12 +23,14 @@ function hipsHeight(root) {
 
 export async function loadSharedAnims() {
   if (shared) return shared;
-  const [a, b] = await Promise.all([loadGlb('models/anims/Shared_Anims.glb'), loadGlb('models/anims/Combat_Anims.glb')]);
+  const [a, b, c] = await Promise.all([
+    loadGlb('models/anims/Shared_Anims.glb'), loadGlb('models/anims/Combat_Anims.glb'), loadGlb('models/anims/Throw_Anim.glb'),
+  ]);
   // Each clip remembers its source skeleton's hip height for retargeting.
   const from = (gltf, n) => {
-    const c = gltf.animations.find((x) => x.name === n);
-    c.userData = { hipsY: hipsHeight(gltf.scene) };
-    return c;
+    const clip = gltf.animations.find((x) => x.name.includes(n));
+    clip.userData = { hipsY: hipsHeight(gltf.scene) };
+    return clip;
   };
   shared = {
     hipsY: hipsHeight(a.scene),
@@ -42,6 +45,7 @@ export async function loadSharedAnims() {
     crouchWalk: from(b, 'Cautious_Crouch_Walk_Forward'),
     crouchIdle: from(b, 'CrouchLookAroundBow'),
     climb: from(b, 'climbing_up_wall'),
+    throw: from(c, 'Over_Shoulder_Throw'),
   };
   return shared;
 }

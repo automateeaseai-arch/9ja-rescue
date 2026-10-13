@@ -4,8 +4,9 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
-const FIRE_INTERVAL = 0.22;   // seconds between shots while Fire is held
-const SHOT_DAMAGE = 34;       // three body hits knock a guard out
+// Fire held: rounds of 3 bullets, 0.07 s apart, with 0.4 s between rounds.
+const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4;
+const SHOT_DAMAGE = 25;       // four body hits knock a guard out
 const HEAD_DAMAGE = 100;
 const PUNCH_DAMAGE = 34;
 const PUNCH_REACH = 1.7;
@@ -24,7 +25,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, r
     down: document.getElementById('down'),
   };
   ui.health.hidden = false;
-  const st = { health: MAX_HEALTH, sinceHit: 99, cooldown: 0, hurt: 0, downT: 0, hitMark: 0, shots: 0, hits: 0, takedowns: 0 };
+  const st = { burstLeft: 0, health: MAX_HEALTH, sinceHit: 99, cooldown: 0, hurt: 0, downT: 0, hitMark: 0, shots: 0, hits: 0, takedowns: 0 };
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
   const O = new THREE.Vector3(), D = new THREE.Vector3(), P = new THREE.Vector3(), Q = new THREE.Vector3();
   const muzzle = new THREE.Vector3(), end = new THREE.Vector3();
@@ -127,9 +128,12 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, r
     if (st.sinceHit > REGEN_DELAY) st.health = Math.min(MAX_HEALTH, st.health + REGEN_RATE * dt);
 
     st.cooldown -= dt;
+    if (st.burstLeft > 0 && !player.state.aiming) { st.burstLeft = 0; st.cooldown = BURST_GAP; }
     if (player.state.aiming && player.aimWeight > 0.7 && st.cooldown <= 0) {
-      st.cooldown = FIRE_INTERVAL;
+      if (st.burstLeft <= 0) st.burstLeft = BURST;
       fire();
+      st.burstLeft--;
+      st.cooldown = st.burstLeft > 0 ? BULLET_GAP : BURST_GAP;
     }
     if (player.state.strike) {
       player.state.strike = false;

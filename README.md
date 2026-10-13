@@ -63,6 +63,8 @@ All models face +Z, have their origin at the feet and use metres. Shared clips i
 
 Combat and movement clips in `public/models/anims/Combat_Anims.glb` (291 KB, skeleton only): Right_Jab_from_Guard (punch), Knock_Down (guard hit from the front), Shot_and_Fall_Forward (guard taken down from behind), Swim_Idle, Swim_Forward, Cautious_Crouch_Walk_Forward, CrouchLookAroundBow (crouch idle), climbing_up_wall. Meshy animation task `01a13562-44f5-76ca-80df-c401c679b078` (8 × 3 = 24 credits) on a fresh rig of the Female Soldier, `01a13561-eb82-75c4-92a3-b19eb0f45746` (5 credits; the old rig task had expired on Meshy). Retargeted the same way; falls keep their travel, the climb loop has its rise removed.
 
+Throw clip in `public/models/anims/Throw_Anim.glb` (56 KB): Over_Shoulder_Throw, Meshy animation task `01a1357e-38a6-73fd-8a02-e2532d33cde4` on the same rig (3 credits). Played on the arms from 0.6 s, grenade released at 1.83 s (clip time).
+
 ## Items register
 From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
 

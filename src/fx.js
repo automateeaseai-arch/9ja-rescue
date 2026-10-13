@@ -99,6 +99,11 @@ export function createFx(scene) {
       play(v, distance > 40 ? 900 : 2600, 0.25 + Math.min(distance, 60) * 0.004);
     },
     punch() { play(0.6, 260, 0.12); },
+    // Grenade: a deep boom with a long tail, quieter and duller far away.
+    boom(distance = 0) {
+      play(1.0 / (1 + distance * 0.04), distance > 50 ? 260 : 600, 1.2);
+      play(0.6 / (1 + distance * 0.05), 1800, 0.18);
+    },
     // Two rising notes when a first-aid kit is picked up.
     chime() {
       if (!ctx || ctx.state !== 'running') return;
