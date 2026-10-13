@@ -497,7 +497,13 @@ export function createMission(ctx) {
       pause: el('pause'), pauseInfo: el('pause-info'), saveWarn: el('save-warn'),
       entryBtns: [...document.querySelectorAll('#pause [data-entry]')],
     };
-    const on = (id, f) => el(id)?.addEventListener('click', f);
+    // Touch handled directly (a quick second tap is not lost to double-tap handling).
+    const on = (id, f) => {
+      const b = el(id);
+      if (!b) return;
+      b.addEventListener('touchend', (e) => { e.preventDefault(); f(); }, { passive: false });
+      b.addEventListener('click', f);
+    };
     // Interact (phones tap the button; desktop presses V).
     const hit = (e) => { input.state.drive = true; e.preventDefault(); };
     u.interact.addEventListener('touchstart', hit, { passive: false });
@@ -508,15 +514,26 @@ export function createMission(ctx) {
     on('pause-resume', () => togglePause(false));
     on('pause-checkpoint', () => { togglePause(false); restartCheckpoint(); });
     on('pause-retry', () => { togglePause(false); retry(); });
+    // Abandoning needs a second tap (no browser pop-ups: they can be blocked).
+    let armed = false;
     on('pause-new', () => {
-      if (!finished && !confirm('Abandon this mission and start a new one? Progress is lost; characters, RP and purchases stay.')) return;
+      const b = el('pause-new');
+      if (!finished && !armed) {
+        armed = true;
+        b.textContent = 'Tap again: abandon this mission (characters, RP and purchases stay)';
+        setTimeout(() => { armed = false; b.textContent = 'New mission'; }, 4000);
+        return;
+      }
+      armed = false;
+      b.textContent = 'New mission';
       togglePause(false);
       newMission();
     });
     for (const b of u.entryBtns) {
+      b.addEventListener('touchend', (e) => { e.preventDefault(); b.click(); }, { passive: false });
       b.addEventListener('click', () => {
         const e = b.dataset.entry;
-        if (e !== 'ground' && !(account.inventory[e] > 0)) { alert(`No ${e} owned. Use the test buttons below to add one.`); return; }
+        if (e !== 'ground' && !(account.inventory[e] > 0)) { ui.pauseInfo.innerHTML += `<br><b>No ${e} owned: add one with the buttons below first.</b>`; return; }
         account.nextEntry = e;
         saveAccount(account);
         refreshPause();
