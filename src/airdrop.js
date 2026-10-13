@@ -21,6 +21,10 @@ const DROP_HEIGHT = 135;       // floor height above the highest ground under th
 const FLIGHT = 28;             // seconds of flight before the plane leaves the area
 const AUTO_JUMP = 16;          // the player is pushed out after this long
 const FLY_TIME = 30;           // jump to landing
+// Propellers, in the model's own units (nose along -X): hub height, the
+// propeller plane, radius, and each engine's place along the wing.
+const PROP_Y = 0.178, PROP_X = -0.292, PROP_R = 0.098, PROP_Z = [-0.46, -0.237, 0.237, 0.46];
+const PROP_SPIN = 14;          // radians a second (slowed down, so the blades can be seen turning)
 const KINDS = {
   parachute: { url: 'models/items/Parachute.glb', scale: 3, free: 3.0, speed: 6, fast: 9, slow: 3, turn: 0.9, open: 1.0,
     pose: { clip: 'ropeHang', rate: 1 }, camDist: 9, camHeight: 2.8 },
@@ -34,8 +38,18 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
   group.visible = false;
   scene.add(group);
   let planeReady = false;
+  const props = [];
   loadGlb('models/vehicles/Cargo_Plane.glb').then((gltf) => {
     const m = gltf.scene;
+    m.updateMatrixWorld(true);
+    stripBlades(m);
+    for (const z of PROP_Z) {
+      const p = buildProp();
+      p.position.set(PROP_X, PROP_Y, z);
+      p.rotation.x = z * 7;               // not all in step
+      m.add(p);
+      props.push(p);
+    }
     m.scale.setScalar(PLANE_SCALE);
     m.rotation.y = Math.PI / 2;          // the model's nose is along its local -X
     m.position.y = -FLOOR_Y;
@@ -223,6 +237,7 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
       // The plane flies on (and away, once the player has jumped).
       group.position.addScaledVector(planeVel, dt);
       group.rotation.z = Math.sin(st.t * 0.7) * 0.015;
+      if (group.visible) for (const p of props) p.rotation.x += dt * PROP_SPIN;
       group.position.y += Math.sin(st.t * 0.9) * 0.01;
     }
     group.updateMatrixWorld();
@@ -320,6 +335,54 @@ export function createAirDrop({ scene, physics, player, fx, heightAt, waterAt, h
     fx?.wind(0.12 + st.speed / 60, 500);
     if (pos.y <= ground + 0.02) land(ground);
     else { const c = collide(st.open > 0.6 ? st.kind : 'fall'); if (c) snag(c); }
+  }
+
+  // The model's propeller blades are fixed in its mesh: cut them out (the
+  // spinners stay) so code-built blades can turn in their place.
+  function stripBlades(root) {
+    const v = new THREE.Vector3();
+    root.traverse((o) => {
+      if (!o.isMesh || !o.geometry.index) return;
+      const pos = o.geometry.attributes.position, idx = o.geometry.index.array;
+      const blade = new Uint8Array(pos.count);
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        if (v.x < -0.305 || v.x > -0.2805) continue;
+        for (const z of PROP_Z) {
+          const r = Math.hypot(v.y - PROP_Y, v.z - z);
+          if (r > 0.022 && r < PROP_R + 0.01) { blade[i] = 1; break; }
+        }
+      }
+      const keep = [];
+      for (let t = 0; t < idx.length; t += 3) {
+        if (blade[idx[t]] && blade[idx[t + 1]] && blade[idx[t + 2]]) continue;
+        keep.push(idx[t], idx[t + 1], idx[t + 2]);
+      }
+      o.geometry.setIndex(keep);
+    });
+  }
+
+  // Four dark blades and a faint disc for the blur of the spin (model units;
+  // the propeller turns about the model's X axis).
+  function buildProp() {
+    const p = new THREE.Group();
+    const bladeMat = new THREE.MeshStandardMaterial({ color: '#23272a', roughness: 0.6 });
+    const blade = new THREE.BoxGeometry(0.003, PROP_R - 0.012, 0.014);
+    blade.translate(0, (PROP_R - 0.012) / 2 + 0.012, 0);
+    for (let k = 0; k < 4; k++) {
+      const b = new THREE.Mesh(blade, bladeMat);
+      b.rotation.x = k * Math.PI / 2;
+      b.rotation.y = 0.35;                 // blade pitch
+      const holder = new THREE.Group();
+      holder.rotation.x = k * Math.PI / 2;
+      b.rotation.x = 0;
+      holder.add(b);
+      p.add(holder);
+    }
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(PROP_R, 32).rotateY(Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: '#2a2e30', transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
+    p.add(disc);
+    return p;
   }
 
   // Code-built cargo details inside the Meshy bay: floor rails, red webbing
