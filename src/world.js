@@ -35,14 +35,42 @@ function distToTrack(x, z) {
   return Math.hypot(x - (TRACK_FROM.x + ax * t), z - (TRACK_FROM.z + az * t));
 }
 
+// DSS extraction point, west of the village beside a river, reached by a
+// second track from the village edge.
+export const DSS = { x: -55, z: 38, r: 13 };
+const DSS_TRACK_FROM = { x: -12, z: 4 };
+
+function distToSegment(x, z, a, b) {
+  const ax = b.x - a.x, az = b.z - a.z;
+  const t = THREE.MathUtils.clamp(((x - a.x) * ax + (z - a.z) * az) / (ax * ax + az * az), 0, 1);
+  return Math.hypot(x - (a.x + ax * t), z - (a.z + az * t));
+}
+const distToDssTrack = (x, z) => distToSegment(x, z, DSS_TRACK_FROM, DSS);
+
+// The river runs roughly north–south just west of the DSS point.
+export function riverX(z) {
+  return -80 + Math.sin(z * 0.035) * 8 + Math.sin(z * 0.09) * 2;
+}
+export const RIVER_HALF_WIDTH = 4.5;
+
+function rollingHills(x, z) {
+  return Math.sin(x * 0.045) * Math.cos(z * 0.04) * 3.2 +
+    Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.7) * 0.9;
+}
+
 // Gentle rolling ground, flat where the village and the camp sit.
 export function groundHeight(x, z) {
-  const hills =
-    Math.sin(x * 0.045) * Math.cos(z * 0.04) * 3.2 +
-    Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.7) * 0.9;
   const village = THREE.MathUtils.smoothstep(Math.hypot(x, z), 22, 50);
   const camp = THREE.MathUtils.smoothstep(Math.hypot(x - CAMP.x, z - CAMP.z), CAMP.r, CAMP.r + 22);
-  return hills * Math.min(village, camp);
+  const dss = THREE.MathUtils.smoothstep(Math.hypot(x - DSS.x, z - DSS.z), DSS.r, DSS.r + 15);
+  // The river bed is carved 1.6 m into the ground with sloping banks.
+  const river = 1 - THREE.MathUtils.smoothstep(Math.abs(x - riverX(z)), RIVER_HALF_WIDTH - 1, RIVER_HALF_WIDTH + 3);
+  return rollingHills(x, z) * Math.min(village, camp, dss) - river * 1.6;
+}
+
+// Height of the river's water surface at a given z.
+export function riverLevel(z) {
+  return groundHeight(riverX(z), z) + 0.9;
 }
 
 // True where vegetation and rocks must not be placed: the road, the camp
@@ -50,6 +78,9 @@ export function groundHeight(x, z) {
 function onRoad(x, z, margin = 0) {
   return (z > 4 && Math.abs(x - roadX(z)) < 2.6 + margin) ||
     distToTrack(x, z) < 2.2 + margin ||
+    distToDssTrack(x, z) < 2.2 + margin ||
+    Math.hypot(x - DSS.x, z - DSS.z) < DSS.r + margin ||
+    Math.abs(x - riverX(z)) < RIVER_HALF_WIDTH + 1 + margin ||
     Math.hypot(x - CAMP.x, z - CAMP.z) < CAMP.r + margin;
 }
 
@@ -135,6 +166,8 @@ function buildGround(scene, physics) {
   const dry = new THREE.Color('#ddb06a');
   const grass = new THREE.Color('#a39a4c');
   const dirt = new THREE.Color('#cf7c43');
+  const lush = new THREE.Color('#7f9a3e');
+  const gravel = new THREE.Color('#8a7a68');
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -146,6 +179,12 @@ function buildGround(scene, physics) {
     c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x, z), 8, 26));
     if (z > 4) c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.abs(x - roadX(z)), 1.6, 3.4));
     c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(distToTrack(x, z), 1.2, 2.8));
+    c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(distToDssTrack(x, z), 1.2, 2.8));
+    c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x - DSS.x, z - DSS.z), DSS.r - 5, DSS.r + 2));
+    // Greener, damper ground along the river; grey gravel in the bed.
+    const rd = Math.abs(x - riverX(z));
+    c.lerp(lush, 1 - THREE.MathUtils.smoothstep(rd, RIVER_HALF_WIDTH + 1, RIVER_HALF_WIDTH + 9));
+    c.lerp(gravel, 1 - THREE.MathUtils.smoothstep(rd, RIVER_HALF_WIDTH - 1, RIVER_HALF_WIDTH + 1));
     c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x - CAMP.x, z - CAMP.z), CAMP.r - 4, CAMP.r + 3));
     colors.push(c.r, c.g, c.b);
   }
@@ -628,6 +667,7 @@ export function buildWorld(scene, physics, { phone = false } = {}) {
   }
   // A big shade tree beside the road at the arrival point.
   treeSpots.push([roadX(40) - 8, 40, true]);
+  treeSpots.push([DSS.x + 12, DSS.z + 16, true]); // shade tree over the DSS canopy
   buildTrees(scene, physics, rand, treeSpots);
   buildBushes(scene, rand);
   buildGrass(scene, rand);

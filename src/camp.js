@@ -14,7 +14,7 @@ import {
 const tarpTime = { value: 0 };
 
 // Cloth that ripples gently, more at its free edges (uv.y near 1).
-function tarpMaterial(color, rand) {
+export function tarpMaterial(color, rand) {
   const map = canvasTexture(128, (g, n) => {
     g.fillStyle = color;
     g.fillRect(0, 0, n, n);
@@ -44,7 +44,7 @@ function tarpMaterial(color, rand) {
 
 // A sagging cloth panel spanning four corners: a→b along the top edge,
 // c→d along the bottom (free) edge.
-function cloth(scene, mat, a, b, c, d, sag = 0.12) {
+export function cloth(scene, mat, a, b, c, d, sag = 0.12) {
   const geo = new THREE.PlaneGeometry(1, 1, 10, 5);
   const pos = geo.attributes.position;
   const uv = geo.attributes.uv;

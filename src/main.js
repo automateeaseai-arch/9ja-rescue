@@ -6,6 +6,7 @@ import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { spawnHostages } from './hostages.js';
 import { buildCamp } from './camp.js';
+import { buildDss } from './dss.js';
 
 const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
@@ -91,9 +92,13 @@ async function start() {
   const updateHostiles = spawnHostiles(scene);
   const objective = document.querySelector('#hud .objective');
   objective.textContent = 'Hostages are held in the camp north-east of the village: follow the dirt track';
-  const updateHostages = spawnHostages(scene, (name, count, total) => {
-    objective.textContent = `${name} is following you · ${count} of ${total} rescued`;
+  const hostages = spawnHostages(scene, (name, count, total) => {
+    objective.textContent = `${name} is following you. Lead them to the DSS vehicles by the river, west of the village`;
   });
+  let updateDss = () => {};
+  buildDss(scene, physics, hostages, (name, delivered, total, rp) => {
+    objective.textContent = `${name} is safe with DSS · ${delivered} of ${total} delivered · ${rp.toLocaleString()} RP`;
+  }).then((f) => { updateDss = f; }).catch((err) => console.error(err));
 
   await step('Preparing graphics');
   renderer.compile(scene, camera);
@@ -165,18 +170,34 @@ async function start() {
       physics.step();
       acc -= FIXED;
     }
-    world.update(dt, player.position);
-    updateCamp(dt);
-    updateHostiles(dt, player.position);
-    updateHostages(dt, player);
+    updateScene(dt);
     updateCamera(dt);
     renderer.render(scene, camera);
   });
 
+  function updateScene(dt) {
+    world.update(dt, player.position);
+    updateCamp(dt);
+    updateHostiles(dt, player.position);
+    hostages.update(dt, player);
+    updateDss(dt, player);
+  }
+
   // Handy for debugging from the browser console.
   window.game = {
     scene, camera, player, physics, renderer,
+    hostages,
     look(y, p) { yaw = y; pitch = p; },
+    // Runs game logic without rendering, for automated tests.
+    simulate(seconds, move = { moveX: 0, moveY: 0, run: false }) {
+      const idle = { state: move, consumeJump: () => false };
+      for (let i = 0; i < seconds * 60; i++) {
+        player.update(FIXED, idle, yaw);
+        physics.step();
+        updateScene(FIXED);
+      }
+      updateCamera(0);
+    },
   };
 }
 

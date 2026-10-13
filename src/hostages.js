@@ -58,9 +58,16 @@ export function spawnHostages(scene, onRescue) {
   const target = new THREE.Vector3();
   const delta = new THREE.Vector3();
 
-  return function update(dt, player) {
+  // Sends a following hostage to walk to `point`; `onArrive` runs when they get there.
+  function sendTo(u, point, onArrive) {
+    const i = line.indexOf(u);
+    if (i >= 0) line.splice(i, 1);
+    u.destination = { point: point.clone(), onArrive };
+  }
+
+  function update(dt, player) {
     for (const u of units) {
-      if (!u.following && u.model.position.distanceTo(player.position) < RESCUE_RADIUS) {
+      if (!u.following && !u.gone && u.model.position.distanceTo(player.position) < RESCUE_RADIUS) {
         u.following = true;
         line.push(u);
         onRescue?.(u.name, line.length, HOSTAGES.length);
@@ -85,6 +92,25 @@ export function spawnHostages(scene, onRescue) {
       leader = u.model.position;
     }
 
+    // Hostages heading to a set point (e.g. boarding the DSS van).
+    for (const u of units) {
+      if (!u.destination) continue;
+      delta.subVectors(u.destination.point, u.model.position).setY(0);
+      const dist = delta.length();
+      u.speed = THREE.MathUtils.damp(u.speed, dist > 0.4 ? WALK_SPEED : 0, 8, dt);
+      if (dist > 0.05) {
+        u.model.position.addScaledVector(delta.normalize(), Math.min(u.speed * dt, dist));
+        u.model.rotation.y = Math.atan2(delta.x, delta.z);
+        u.model.position.y = groundHeight(u.model.position.x, u.model.position.z);
+      }
+      if (dist < 0.45) {
+        const done = u.destination.onArrive;
+        u.destination = null;
+        u.speed = 0;
+        done?.(u);
+      }
+    }
+
     for (const u of units) {
       const s = u.speed;
       const runW = THREE.MathUtils.clamp((s - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1);
@@ -94,5 +120,7 @@ export function spawnHostages(scene, onRescue) {
       u.actions.run.setEffectiveWeight(runW);
       u.mixer.update(dt);
     }
-  };
+  }
+
+  return { update, line, sendTo, total: HOSTAGES.length };
 }
