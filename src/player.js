@@ -14,7 +14,9 @@ export const CHARACTERS = [
 
 const WALK_SPEED = 1.7;   // metres per second
 const RUN_SPEED = 5.0;
-const JUMP_SPEED = 5.5;
+const JUMP_SPEED = 7.0;      // ~1.35 m high
+const JUMP_FORWARD_MIN = 3.5; // a jump always carries you forward at least this fast (m/s)
+const JUMP_FORWARD_BOOST = 1.2;
 const GRAVITY = -18;
 const CAPSULE_HALF = 0.55;
 const CAPSULE_RADIUS = 0.35;
@@ -119,6 +121,8 @@ export function createPlayer(scene, physics, spawn) {
   let grounded = false;
   let speed = 0;
   let facing = Math.PI; // start facing -Z (towards the village house)
+  let airborne = false;
+  const airVel = new THREE.Vector3();
 
   function setCharacter(entry) {
     if (model) root.remove(model);
@@ -160,16 +164,32 @@ export function createPlayer(scene, physics, spawn) {
 
     if (grounded) {
       vy = -1;
-      if (input.consumeJump()) vy = JUMP_SPEED;
+      airVel.set(0, 0, 0);
+      if (input.consumeJump()) {
+        vy = JUMP_SPEED;
+        // Launch forward in the direction of travel, or the way the character faces.
+        const dir = mag > 0.05 ? move.clone() : new THREE.Vector3(Math.sin(facing), 0, Math.cos(facing));
+        airVel.copy(dir).multiplyScalar(Math.max(speed * JUMP_FORWARD_BOOST, JUMP_FORWARD_MIN));
+        airborne = true;
+      }
     } else {
       input.consumeJump();
       vy += GRAVITY * dt;
     }
 
-    const desired = { x: move.x * speed * dt, y: vy * dt, z: move.z * speed * dt };
+    // In the air, momentum carries the jump; the stick only steers a little.
+    let vx = move.x * speed, vz = move.z * speed;
+    if (airborne) {
+      airVel.x += move.x * mag * 4 * dt;
+      airVel.z += move.z * mag * 4 * dt;
+      vx = airVel.x;
+      vz = airVel.z;
+    }
+    const desired = { x: vx * dt, y: vy * dt, z: vz * dt };
     controller.computeColliderMovement(collider, desired);
     const corrected = controller.computedMovement();
     grounded = controller.computedGrounded();
+    if (grounded && vy <= 0) airborne = false;
     const p = body.translation();
     const next = { x: p.x + corrected.x, y: p.y + corrected.y, z: p.z + corrected.z };
     if (next.y < -30) { next.x = 0; next.y = 5; next.z = 12; vy = 0; } // fell out of the world
