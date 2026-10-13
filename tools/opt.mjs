@@ -1,0 +1,13 @@
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { textureCompress, prune, dedup, weld, center } from '@gltf-transform/functions';
+import sharp from 'sharp';
+const [,, inp, out] = process.argv;
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+const doc = await io.read(inp);
+await doc.transform(weld(), dedup(), prune(), center({ pivot: 'below' }), textureCompress({ encoder: sharp, targetFormat: 'jpeg', resize: [1024, 1024], quality: 85 }));
+const r = doc.getRoot();
+let tris = 0; for (const m of r.listMeshes()) for (const p of m.listPrimitives()) tris += (p.getIndices()?.getCount() ?? p.getAttribute('POSITION').getCount()) / 3;
+const pos = r.listMeshes()[0].listPrimitives()[0].getAttribute('POSITION');
+console.log('tris', tris, 'materials', r.listMaterials().length, 'bbox', pos.getMin([]).map(v=>v.toFixed(2)), pos.getMax([]).map(v=>v.toFixed(2)));
+await io.write(out, doc);
