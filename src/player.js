@@ -109,6 +109,13 @@ const THROW_START = 0.6;     // clip time the throw starts from (skips the slow 
 const THROW_RELEASE = 1.83;  // clip time (s) when the grenade leaves the hand
 const THROW_LEN = 2.45;      // clip time (s) when the throw is finished
 const PUNCH_LEN = 1.15;      // clip time (s) when the jab is back in guard
+// Melee attacks (Meshy clips): playback rate, clip time of the hit, clip time it ends.
+// The slash (cutlass) and jab play on the arms; the kick uses the whole body.
+const MELEE = {
+  punch: { action: 'punch', rate: PUNCH_RATE, strike: PUNCH_STRIKE, len: PUNCH_LEN, full: false },
+  slash: { action: 'slash', rate: 1.5, strike: 0.5, len: 1.2, full: false },
+  kick: { action: 'kick', rate: 1.4, strike: 0.55, len: 1.2, full: true },
+};
 
 // opts.waterAt(x, z) → { level, ground } where there is water, else null.
 // opts.canThrow() / opts.onThrow(): grenade cooldown, checked when a throw starts.
@@ -150,7 +157,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   let airborne = false;
   let aim = 0;
   const airVel = new THREE.Vector3();
-  let punchT = -1;            // clip time of the jab in progress, or -1
+  let punchT = -1;            // clip time of the melee attack in progress, or -1
+  let melee = MELEE.punch;    // which attack that is
   let throwT = -1;            // clip time of the throw in progress, or -1
   let bones = {};
   // mode: 'ground', 'swim' or 'climb'
@@ -191,6 +199,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       shoot: mixer.clipAction(upperBody(retarget(A.shoot, model))),
       punch: mixer.clipAction(upperBody(retarget(A.punch, model))),
       throw: mixer.clipAction(upperBody(retarget(A.throw, model))),
+      slash: mixer.clipAction(upperBody(retarget(A.slash, model))),
+      kick: mixer.clipAction(retarget(A.kick, model)),
       swimIdle: mixer.clipAction(retarget(A.swimIdle, model)),
       swimForward: mixer.clipAction(retarget(A.swimForward, model)),
       climb: mixer.clipAction(retarget(A.climb, model, 'loopUp')),
@@ -198,7 +208,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       barHang: mixer.clipAction(retarget(A.barHang, model)),
     };
     for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
-    for (const a of [actions.punch, actions.throw]) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
+    for (const a of [actions.punch, actions.throw, actions.slash, actions.kick]) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
     actions.idle.setEffectiveWeight(1);
   }
 
@@ -256,7 +266,34 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     rifle.matrixWorldNeedsUpdate = true;
   }
   const _dir = new THREE.Vector3(), _up = new THREE.Vector3(), _at = new THREE.Vector3(), _c = new THREE.Vector3(0, 0.3 * RIFLE_SCALE, 0);
+  // Cutlass (Meshy model): in the right hand while it is the chosen weapon.
+  // Model: blade along local -X, edge down, handle at +X.
+  let cutlass = null;
+  const CUT_SCALE = 0.36;                                   // about 68 cm
+  const cutRot = new THREE.Euler(0, Math.PI / 2, 0);   // blade forward from the fist
+  const CUT_GRIP = new THREE.Vector3(0.62, 0.12, 0);       // handle centre (model units)
+  loadGlb('models/items/Cutlass.glb').then((gltf) => {
+    cutlass = gltf.scene;
+    cutlass.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+    cutlass.matrixAutoUpdate = false;
+    cutlass.visible = false;
+    scene.add(cutlass);
+  }).catch((err) => console.error(err));
+  const _hq = new THREE.Quaternion(), _hp = new THREE.Vector3(), _cq = new THREE.Quaternion(), _cs = new THREE.Vector3(), _g = new THREE.Vector3();
+  function updateCutlass() {
+    if (!cutlass) return;
+    cutlass.visible = root.visible && state.weapon === 'cutlass' && !!bones.RightHand && state.mode !== 'swim';
+    if (!cutlass.visible) return;
+    bones.RightHand.updateWorldMatrix(true, false);
+    bones.RightHand.matrixWorld.decompose(_hp, _hq, _cs);
+    _cq.copy(_hq).multiply(new THREE.Quaternion().setFromEuler(cutRot));
+    _g.copy(CUT_GRIP).multiplyScalar(CUT_SCALE).applyQuaternion(_cq);
+    cutlass.matrix.compose(_hp.sub(_g), _cq, _cs.setScalar(CUT_SCALE));
+    cutlass.matrixWorldNeedsUpdate = true;
+  }
+
   function updateRifle(pitch) {
+    updateCutlass();
     if (!rifle || !model) return;
     rifle.visible = root.visible;
     const fx = Math.sin(facing), fz = Math.cos(facing);
@@ -281,7 +318,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   let ride = null;
   const RIDE_POSE = { clip: 'crouchWalk', time: 0.3 }; // knees bent, hands forward: sits on the bike
   function updateRide(dt, input, cameraPitch) {
-    for (const f of ['consumeJump', 'consumePunch', 'consumeThrow', 'consumeCrouch']) input[f]?.();
+    for (const f of ['consumeJump', 'consumePunch', 'consumeKick', 'consumeThrow', 'consumeCrouch']) input[f]?.();
     state.aiming = false;
     state.crouch = false;
     speed = 0;
@@ -330,9 +367,13 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     const crouchPressed = input.consumeCrouch?.();
     if (crouchPressed && state.mode === 'ground' && !state.disabled) state.crouch = !state.crouch;
     if (state.mode !== 'ground' || (s.run && mag > 0.05)) state.crouch = false;
-    if (input.consumePunch?.() && punchT < 0 && throwT < 0 && !state.disabled && state.mode === 'ground') {
+    // Melee: Fire with the cutlass slashes; punch and kick otherwise.
+    state.weapon = s.weapon ?? 'gun';
+    const punchIn = input.consumePunch?.(), kickIn = input.consumeKick?.();
+    if ((punchIn || kickIn) && punchT < 0 && throwT < 0 && !state.disabled && state.mode === 'ground') {
+      melee = kickIn ? MELEE.kick : state.weapon === 'cutlass' ? MELEE.slash : MELEE.punch;
       punchT = 0;
-      actions?.punch.reset().play();
+      actions?.[melee.action].reset().play();
     }
     if (input.consumeThrow?.() && throwT < 0 && punchT < 0 && !state.disabled && state.mode === 'ground' && opts.canThrow?.() !== false) {
       opts.onThrow?.();
@@ -347,9 +388,9 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     }
     if (punchT >= 0) {
       const before = punchT;
-      punchT += dt * PUNCH_RATE;
-      if (before < PUNCH_STRIKE && punchT >= PUNCH_STRIKE) state.strike = true;
-      if (punchT > PUNCH_LEN) punchT = -1;
+      punchT += dt * melee.rate;
+      if (before < melee.strike && punchT >= melee.strike) state.strike = melee.action;
+      if (punchT > melee.len) punchT = -1;
     }
 
     let targetSpeed = mag < 0.05 ? 0 : (s.run ? RUN_SPEED : WALK_SPEED * Math.max(mag, 0.6));
@@ -430,7 +471,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     // Visuals follow the physics body.
     root.position.set(next.x, next.y - FOOT_OFFSET, next.z);
     // While aiming, the character turns to face where the camera looks.
-    state.aiming = (s.fire || s.aim) && s.weapon !== 'unarmed' && !state.disabled && state.mode === 'ground';
+    state.aiming = (s.fire || s.aim) && (s.weapon ?? 'gun') === 'gun' && !state.disabled && state.mode === 'ground';
     if (state.mode !== 'climb' && (state.aiming || mag > 0.05)) {
       const targetFacing = state.aiming ? Math.atan2(forward.x, forward.z) : Math.atan2(move.x, move.z);
       let diff = targetFacing - facing;
@@ -447,7 +488,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   }
 
   const ALL = ['idle', 'walk', 'run', 'crouchIdle', 'crouchWalk', 'idleLegs', 'walkLegs', 'runLegs', 'crouchIdleLegs',
-    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb', 'ropeHang', 'barHang'];
+    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb', 'ropeHang', 'barHang', 'slash', 'kick'];
   const W = {};
   function animate(dt) {
     for (const k of ALL) W[k] = 0;
@@ -468,18 +509,23 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       const runW = clamp01((speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED));
       const walkW = clamp01(speed / (state.crouch ? CROUCH_SPEED : WALK_SPEED)) * (1 - runW);
       const idleW = Math.max(0, 1 - walkW - runW);
-      // Punch: the jab clip fades in and out on the arms.
-      const punchW = punchT < 0 ? 0 : Math.min(1, punchT / 0.15, (PUNCH_LEN - punchT) / 0.3);
+      // Melee: the clip fades in and out (the jab and slash on the arms, the kick on the whole body).
+      const meleeW = punchT < 0 ? 0 : Math.min(1, punchT / 0.15, (melee.len - punchT) / 0.3);
+      const punchW = melee.full ? 0 : meleeW, kickW = melee.full ? meleeW : 0;
       const throwW = throwT < 0 ? 0 : Math.min(1, (throwT - THROW_START) / 0.2, (THROW_LEN - throwT) / 0.4);
       const upper = Math.min(1, aim + punchW + throwW); // arms busy: the legs carry on alone
       const body = { idle: idleW * (1 - crouchW), walk: walkW * (1 - crouchW), run: runW * (1 - crouchW),
         crouchIdle: idleW * crouchW, crouchWalk: (walkW + runW) * crouchW };
       for (const [k, w] of Object.entries(body)) {
-        W[k] = w * (1 - upper);
-        W[k + 'Legs'] = w * upper;
+        W[k] = w * (1 - upper) * (1 - kickW);
+        W[k + 'Legs'] = w * upper * (1 - kickW);
       }
-      W.shoot = aim * (1 - punchW) * (1 - throwW);
-      W.punch = punchW;
+      W.shoot = aim * (1 - punchW) * (1 - throwW) * (1 - kickW);
+      W.punch = melee.action === 'punch' ? punchW : 0;
+      W.slash = melee.action === 'slash' ? punchW : 0;
+      W.kick = kickW;
+      actions.slash.timeScale = MELEE.slash.rate;
+      actions.kick.timeScale = MELEE.kick.rate;
       W.throw = throwW;
       actions.throw.timeScale = THROW_RATE;
       actions.walk.timeScale = actions.walkLegs.timeScale = Math.max(0.6, speed / WALK_SPEED);
@@ -512,6 +558,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       root.rotation.set(0, facing, 0);
       this.teleport(x, y, z);
     },
+    cutRot,
     setFacing(y) { facing = y; root.rotation.set(0, y, 0); },
     teleport(x, y, z) {
       body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true);

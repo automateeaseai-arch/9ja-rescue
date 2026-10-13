@@ -10,8 +10,12 @@ import { RULES } from './config.js';
 const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4;
 const SHOT_DAMAGE = RULES.playerBulletDamage;   // five hits defeat a hostile
 const HEAD_DAMAGE = RULES.playerBulletDamage;
-const PUNCH_DAMAGE = RULES.meleeDamage;
-const PUNCH_REACH = 1.7;
+// Melee by attack: punch and kick 1 HP, cutlass slash 2 HP (as a bullet).
+const MELEE = {
+  punch: { damage: RULES.meleeDamage, reach: 1.7 },
+  kick: { damage: RULES.meleeDamage, reach: 1.9 },
+  slash: { damage: RULES.playerBulletDamage, reach: 2.1 },
+};
 const RANGE = 90;
 const MAX_HEALTH = RULES.maxHealth;
 
@@ -84,10 +88,11 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
     }
   }
 
-  // The punch lands on the nearest guard in front, within arm's reach.
-  function punch() {
+  // A punch, kick or slash lands on the nearest guard in front, within reach.
+  function punch(kind = 'punch') {
+    const M = MELEE[kind] ?? MELEE.punch;
     const pp = player.position, f = player.facing;
-    let best = null, bestD = PUNCH_REACH;
+    let best = null, bestD = M.reach;
     for (const u of hostiles.units) {
       if (u.state === 'down') continue;
       Q.subVectors(u.model.position, pp);
@@ -98,12 +103,13 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
       if (d > 0.3 && (Math.sin(f) * Q.x + Math.cos(f) * Q.z) / d < 0.3) continue;
       best = u; bestD = d;
     }
+    if (kind === 'slash') fx.swish?.();
     if (!best) return;
     fx.punch();
     if (hostiles.canTakeDown(best, pp)) {
       hostiles.knockOut(best, pp);
       st.takedowns++;
-    } else hostiles.hit(best, PUNCH_DAMAGE, pp);
+    } else hostiles.hit(best, M.damage, pp);
   }
 
   function hurt(damage) {
@@ -150,8 +156,9 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
       }
     }
     if (player.state.strike) {
+      const kind = player.state.strike;
       player.state.strike = false;
-      punch();
+      punch(typeof kind === 'string' ? kind : 'punch');
     }
 
     // Takedown hint when standing behind an unaware guard.

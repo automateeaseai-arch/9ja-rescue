@@ -12,8 +12,10 @@ export function createInput(canvas) {
     drive: false,    // interact (free a captive, DSS handover, get in or out); consumed each time it is read
     aim: false,      // aim toggle (gun)
     reload: false,   // consumed each time it is read
-    weapon: 'gun',   // 'gun' or 'unarmed' (the cutlass comes later)
+    weapon: 'gun',   // 'gun', 'cutlass' or 'unarmed'
+    kick: false,     // consumed each time it is read
     pause: false,    // consumed each time it is read
+    tap: null,       // { x, y } screen point of a quick tap on the view (picks an aim target)
     lookDX: 0,       // accumulated look deltas in pixels, reset each frame
     lookDY: 0,
   };
@@ -29,12 +31,14 @@ export function createInput(canvas) {
     if (e.code === 'KeyG' && !e.repeat) state.throw = true;
     if (e.code === 'KeyV' && !e.repeat) state.drive = true;
     if (e.code === 'KeyR' && !e.repeat) state.reload = true;
-    if (e.code === 'KeyQ' && !e.repeat) state.aim = !state.aim;
+    if (e.code === 'KeyQ' && !e.repeat) { if (state.weapon === 'unarmed') state.kick = true; else if (state.weapon === 'gun') state.aim = !state.aim; }
+    if (e.code === 'KeyK' && !e.repeat) state.kick = true;
     if (e.code === 'Digit1') setWeapon('gun');
-    if (e.code === 'Digit2') setWeapon('unarmed');
+    if (e.code === 'Digit2') setWeapon('cutlass');
+    if (e.code === 'Digit3') setWeapon('unarmed');
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) state.pause = true;
-    // Unarmed: the attack keys punch.
-    if ((e.code === 'KeyF') && !e.repeat && state.weapon === 'unarmed') state.punch = true;
+    // Unarmed and cutlass: the attack key punches or slashes.
+    if ((e.code === 'KeyF') && !e.repeat && state.weapon !== 'gun') state.punch = true;
   });
   const listeners = [];
   function setWeapon(w) {
@@ -48,7 +52,7 @@ export function createInput(canvas) {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 2) return;
-    if (state.weapon === 'unarmed') state.punch = true; else mouseFire = true;
+    if (state.weapon !== 'gun') state.punch = true; else mouseFire = true;
   });
   addEventListener('mouseup', (e) => { if (e.button === 2) mouseFire = false; });
   addEventListener('blur', () => keys.clear());
@@ -85,7 +89,7 @@ export function createInput(canvas) {
         joy.style.top = `${joyY}px`;
         joy.hidden = false;
       } else {
-        lookTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+        lookTouches.set(t.identifier, { x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY, t0: performance.now() });
       }
     }
     e.preventDefault();
@@ -106,7 +110,7 @@ export function createInput(canvas) {
         const prev = lookTouches.get(t.identifier);
         state.lookDX += (t.clientX - prev.x) * 1.6;
         state.lookDY += (t.clientY - prev.y) * 1.6;
-        lookTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+        lookTouches.set(t.identifier, { ...prev, x: t.clientX, y: t.clientY });
       }
     }
     e.preventDefault();
@@ -121,6 +125,9 @@ export function createInput(canvas) {
         state.moveX = state.moveY = 0;
         state.run = false;
       }
+      // A quick tap without dragging: pick what is under the finger.
+      const lt = lookTouches.get(t.identifier);
+      if (lt && Math.hypot(t.clientX - lt.x0, t.clientY - lt.y0) < 12 && performance.now() - lt.t0 < 350) state.tap = { x: t.clientX, y: t.clientY };
       lookTouches.delete(t.identifier);
     }
   };
@@ -132,12 +139,34 @@ export function createInput(canvas) {
 
   const fireBtn = document.getElementById('fire-btn');
   let touchFire = false;
+  // Drag-to-aim: sliding the thumb from the Fire button steers the aim while firing.
+  let fireDrag = null;
   fireBtn.addEventListener('touchstart', (e) => {
-    if (state.weapon === 'unarmed') state.punch = true; else touchFire = true;
+    if (state.weapon !== 'gun') state.punch = true; else touchFire = true;
+    const t = e.changedTouches[0];
+    fireDrag = { id: t.identifier, x: t.clientX, y: t.clientY };
     e.preventDefault();
   }, { passive: false });
-  fireBtn.addEventListener('touchend', () => { touchFire = false; });
-  fireBtn.addEventListener('touchcancel', () => { touchFire = false; });
+  fireBtn.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (!fireDrag || t.identifier !== fireDrag.id) continue;
+      state.lookDX += (t.clientX - fireDrag.x) * 1.4;
+      state.lookDY += (t.clientY - fireDrag.y) * 1.4;
+      fireDrag.x = t.clientX; fireDrag.y = t.clientY;
+      state.aimDrag = true;
+    }
+    e.preventDefault();
+  }, { passive: false });
+  const fireUp = () => { touchFire = false; fireDrag = null; };
+  fireBtn.addEventListener('touchend', fireUp);
+  fireBtn.addEventListener('touchcancel', fireUp);
+  // Desktop: a left click without dragging picks a target too.
+  let down0 = null;
+  canvas.addEventListener('mousedown', (e) => { if (e.button === 0) down0 = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  canvas.addEventListener('mouseup', (e) => {
+    if (e.button === 0 && down0 && Math.hypot(e.clientX - down0.x, e.clientY - down0.y) < 6 && performance.now() - down0.t < 350 && document.pointerLockElement !== canvas) state.tap = { x: e.clientX, y: e.clientY };
+    down0 = null;
+  });
 
   const punchBtn = document.getElementById('punch-btn');
   punchBtn.addEventListener('touchstart', (e) => { state.punch = true; e.preventDefault(); }, { passive: false });
@@ -151,10 +180,12 @@ export function createInput(canvas) {
     b.addEventListener('touchstart', (e) => { f(); e.preventDefault(); }, { passive: false });
     b.addEventListener('click', f);
   };
-  tap('aim-btn', () => { state.aim = !state.aim; });
+  // Aim with the gun; Kick when unarmed (hidden with the cutlass).
+  tap('aim-btn', () => { if (state.weapon === 'unarmed') state.kick = true; else state.aim = !state.aim; });
   tap('reload-btn', () => { state.reload = true; });
   tap('pause-btn', () => { state.pause = true; });
   tap('weapon-gun', () => setWeapon('gun'));
+  tap('weapon-cutlass', () => setWeapon('cutlass'));
   tap('weapon-unarmed', () => setWeapon('unarmed'));
   const crouchBtn = document.getElementById('crouch-btn');
   crouchBtn.addEventListener('touchstart', (e) => { state.crouch = true; e.preventDefault(); }, { passive: false });
@@ -177,6 +208,8 @@ export function createInput(canvas) {
     },
     setWeapon,
     onWeapon(f) { listeners.push(f); },
+    consumeKick() { const k = state.kick; state.kick = false; return k; },
+    consumeTap() { const t = state.tap; state.tap = null; return t; },
     consumeReload() { const r = state.reload; state.reload = false; return r; },
     consumePause() { const p = state.pause; state.pause = false; return p; },
     consumeDrive() {

@@ -99,6 +99,8 @@ export function createFx(scene) {
       play(v, distance > 40 ? 900 : 2600, 0.25 + Math.min(distance, 60) * 0.004);
     },
     punch() { play(0.6, 260, 0.12); },
+    // A blade cutting the air.
+    swish() { play(0.35, 3200, 0.16); },
     // Hitting water: a bright slap with a softer wash after it.
     splash() { play(0.8, 1600, 0.35); play(0.45, 520, 1.1); },
     // Grenade: a deep boom with a long tail, quieter and duller far away.

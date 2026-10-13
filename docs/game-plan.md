@@ -104,8 +104,12 @@ Code: `src/mission.js` (flow), `src/config.js` (all numbers and places), `src/sa
 - The plan's shop and asset screens are 2D work. For now, the Pause menu has **test tools**: choose the entry (ground, parachute, glider), add a parachute, glider or grenades, own the pickup or motorbike, and switch character.
 - The account starts with no RP and no equipment, as in the plan, so grenades and vehicles appear only after using the test tools (or buying, once the shop exists).
 
-**Not built yet (needs credits)**
-- **Cutlass and kick:** a cutlass model (30 credits), a slash clip (3) and a kick clip (3). Unarmed mode has Punch only. Not spent without the owner's approval.
+**Cutlass and kick (owner approved, 36 credits, 13 Oct)**
+- Weapon selector: Gun, Cutlass, Unarmed. Cutlass: Fire becomes Slash (2 HP, Meshy sword-slash clip, Meshy cutlass in the hand); Aim is hidden. Unarmed: Fire is Punch (1 HP) and Aim becomes Kick (1 HP, Meshy Spartan kick).
+
+**Owner feedback (13 Oct)**
+- First-aid kits must never be inside buildings that can't be entered: every kit and ammo pack is checked against roofs, rocks and water, and moved to the nearest open ground.
+- Aiming: pressing Aim locks onto the nearest hostile in view; tapping a hostile picks them; swiping or dragging from Fire steers freely (finer while aiming).
 
 ## Not done yet
 
@@ -116,7 +120,6 @@ Code: `src/mission.js` (flow), `src/config.js` (all numbers and places), `src/sa
 
 **Settings**
 - Graphics, sensitivity, aim assist, button size and position, left-handed layout, vibration, subtitles, brightness, reduced motion.
-- Optional drag-to-aim Fire.
 
 **Saving**
 - Cloud saving and cross-device recovery; a cross-player leaderboard (both need a backend).

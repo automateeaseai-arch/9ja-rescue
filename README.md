@@ -67,11 +67,14 @@ Throw clip in `public/models/anims/Throw_Anim.glb` (56 KB): Over_Shoulder_Throw,
 
 Air drop clips in `public/models/anims/Air_Anims.glb` (78 KB): Rope_Hang_Idle (under the parachute) and Bar_Hang_Idle (on the hang glider, body tilted forward), Meshy animation task `01a13607-3058-730e-bcd2-c490414395fc` on the same rig (2 × 3 = 6 credits). Freefall uses the Swim_Forward clip slowed down, body belly-down.
 
+Melee clips in `public/models/anims/Melee_Anims.glb` (61 KB): Right_Hand_Sword_Slash (cutlass, arms only, hit at 0.5 s clip time) and Spartan_Kick (whole body, hit at 0.55 s), Meshy animation task `01a13664-3ec4-7077-90c1-9b0905fec7aa` on the same rig (2 × 3 = 6 credits).
+
 ## Items register
 From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
 
 | Item | File | Details | Use |
 |---|---|---|---|
+| Cutlass (West African machete, dark blade, riveted wooden handle) | `public/models/items/Cutlass.glb` | 135,736 B, 5,702 tris, 512 px texture. Text-to-3D preview `01a13664-40cc-7700-8866-bdc45aec8159`, refine `01a13664-ce61-7090-99b8-2aeaea249738`, 30 credits | In the right hand when the Cutlass is chosen (placed on the RightHand bone each frame, rotated 90° about Y; scale 0.36, about 68 cm). Blade along local -X, edge down |
 | Rifle (carbine, olive furniture, red-dot sight) | `public/models/items/Rifle.glb` | 354,956 B, 9,956 tris, 1024 px texture. Task `01a13556-4f0c-7275-8c91-0725d8ab7857`, 30 credits | Player's rifle: in the right hand while aiming (shots leave its muzzle), slung across the back otherwise. Shown 85 cm long |
 | First-aid kit (white and teal case, green cross) | `public/models/items/First_Aid_Kit.glb` | 130,604 B, 2,989 tris, 512 px texture. Task `01a13556-53d4-743b-8614-635d7ac1bfe7`, 30 credits | 11 kits along the routes, hovering over a green ring; +50 health, once each, only taken when hurt |
 | Grenade (yellow and black, ring pull) | `public/models/items/Grenade.glb` | 170,160 B, 3,087 tris, 512 px texture. Task `01a13589-e0ba-72a1-9dfe-a2df570f80da`, 30 credits | Thrown grenade and held in the hand during the throw; shown 12 cm tall |

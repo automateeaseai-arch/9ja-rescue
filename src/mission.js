@@ -18,6 +18,7 @@
 // retry, new mission, and test tools that stand in for the 2D menus (entry
 // choice, equipment, character) until those arrive.
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { RULES, SITE, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed } from './save.js';
 import { PERSONAS } from './hostages.js';
@@ -62,6 +63,27 @@ export function createMission(ctx) {
   const dssPos = () => ctx.getDss()?.pos ?? new THREE.Vector3(-50, 0, 40);
 
   // ---------------------------------------------------------------- setup
+  // Pickups must be reachable: never under a roof (a closed hut or house),
+  // inside a rock or in water. A blocked spot moves to the nearest open ground.
+  const downRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  function blocked(x, z) {
+    if (ctx.waterAt(x, z)) return true;
+    const g = ctx.land.height(x, z);
+    downRay.origin = { x, y: g + 30, z };
+    const hit = ctx.physics.castRay(downRay, 40, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS);
+    return !!hit && g + 30 - hit.timeOfImpact > g + 0.6;
+  }
+  function openSpot(p) {
+    if (p.yHint != null || !blocked(p.x, p.z)) return p;   // authored decks, cave and the store house stay
+    for (let r = 2; r <= 30; r += 2) {
+      for (let a = 0; a < 12; a++) {
+        const x = p.x + Math.cos(a * Math.PI / 6) * r, z = p.z + Math.sin(a * Math.PI / 6) * r;
+        if (!blocked(x, z)) return { ...p, x, z };
+      }
+    }
+    return p;
+  }
+
   function generate(seed, captiveCount, entry) {
     const r = rng(seed);
     const dss = dssPos();
@@ -200,6 +222,8 @@ export function createMission(ctx) {
       const h = state.hostiles[r.id];
       return h ? { ...r, hp: h.hp, down: h.down, at: h.at } : r;
     }));
+    setup.kits = setup.kits.map(openSpot);
+    setup.ammo = setup.ammo.map(openSpot);
     await pickups.configure([...setup.kits, ...setup.ammo], collected);
     await captives.configure(setup.captives.map((c) => ({ ...c, state: state.captives[c.id] ?? 'bound' })), player.position);
     ctx.getDss()?.reset();
@@ -555,6 +579,8 @@ export function createMission(ctx) {
   matchMedia('(orientation: portrait) and (pointer: coarse)').addEventListener?.('change', (e) => { if (e.matches) away(); });
 
   return {
+    blocked,
+    spotOf: spot,
     begin,
     update,
     onDefeated,

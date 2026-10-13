@@ -178,9 +178,9 @@ async function start() {
   if (!input.isTouch) setTimeout(() => { document.getElementById('help').hidden = true; }, 20000);
   // Weapon selector: Gun shows Fire, Aim and Reload; Unarmed turns Fire into Punch.
   const setWeaponUi = (w) => {
-    document.getElementById('weapon-gun').classList.toggle('on', w === 'gun');
-    document.getElementById('weapon-unarmed').classList.toggle('on', w === 'unarmed');
-    document.getElementById('fire-btn').textContent = w === 'gun' ? 'Fire' : 'Punch';
+    for (const k of ['gun', 'cutlass', 'unarmed']) document.getElementById(`weapon-${k}`).classList.toggle('on', w === k);
+    document.getElementById('fire-btn').textContent = { gun: 'Fire', cutlass: 'Slash', unarmed: 'Punch' }[w];
+    document.getElementById('aim-btn').textContent = w === 'unarmed' ? 'Kick' : 'Aim';
   };
   input.onWeapon(setWeaponUi);
 
@@ -205,16 +205,84 @@ async function start() {
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
 
   mission = createMission({
-    scene, camera, player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input, characters,
+    scene, camera, physics, player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input, characters,
     getDss: () => dss, valleyReady, land, roadX, surfaceAt, waterAt, origin: VALLEY_ORIGIN, isTouch: input.isTouch,
     look: (y, p) => { yaw = y; pitch = p; },
   });
   mission.begin().catch((err) => { console.error(err); showError(err.message); });
 
+  // Aiming: pressing Aim picks the nearest hostile in view; a tap on another
+  // hostile picks that one; the camera then turns to keep the crosshair on
+  // the target. Swiping (or dragging from Fire) steers freely, finer while aiming.
+  let aimLock = null, wasAiming = false;
+  const crossEl = document.getElementById('crosshair');
+  const sp = new THREE.Vector3(), chestPt = new THREE.Vector3(), headPt = new THREE.Vector3();
+  const alive = () => hostiles.units.filter((u) => u.id && u.state !== 'down' && u.model.visible);
+  function screenOf(u) {
+    sp.copy(u.model.position).y += 1.2;
+    sp.project(camera);
+    return sp.z < 1 ? { x: (sp.x * 0.5 + 0.5) * innerWidth, y: (-sp.y * 0.5 + 0.5) * innerHeight } : null;
+  }
+  function pickNearest() {
+    headPt.copy(player.position).y += 1.6;
+    let best = null, bestD = Infinity;
+    for (const u of alive()) {
+      const d = u.model.position.distanceTo(player.position);
+      const s2 = screenOf(u);
+      if (d > 45 || !s2 || s2.x < 0 || s2.x > innerWidth || s2.y < 0 || s2.y > innerHeight) continue;
+      chestPt.copy(u.model.position).y += 1.2;
+      if (!hostiles.clearLine(headPt, chestPt)) continue;
+      const c = Math.hypot(s2.x - innerWidth / 2, s2.y - innerHeight / 2);
+      if (c < bestD) { bestD = c; best = u; }
+    }
+    return best;
+  }
+  function pickAt(tap) {
+    let best = null, bestD = 70;
+    for (const u of alive()) {
+      if (u.model.position.distanceTo(player.position) > 90) continue;
+      const s2 = screenOf(u);
+      if (!s2) continue;
+      // The whole body counts, not just the chest.
+      const d = Math.hypot(s2.x - tap.x, Math.max(0, Math.abs(s2.y - tap.y) - 40));
+      if (d < bestD) { bestD = d; best = u; }
+    }
+    return best;
+  }
+  function updateAim(look, dt) {
+    const tap = input.consumeTap?.();
+    const aiming = player.state.aiming;
+    if (tap) {
+      const u = pickAt(tap);
+      if (u) {
+        aimLock = u;
+        if (input.state.weapon === 'gun' && !aiming) input.state.aim = true;
+      }
+    }
+    if (aiming && !wasAiming && !aimLock) aimLock = pickNearest();
+    wasAiming = aiming;
+    // Steering by hand releases the lock; so do putting the gun down and a defeated target.
+    if (Math.hypot(look.x, look.y) > 8 || (!aiming && !input.state.aim) || aimLock?.state === 'down') aimLock = null;
+    if (aimLock && aimLock.model.position.distanceTo(player.position) > 90) aimLock = null;
+    crossEl.classList.toggle('locked', !!aimLock);
+    if (!aimLock) return;
+    headPt.copy(player.position).y += 1.6;
+    chestPt.copy(aimLock.model.position).y += 1.15;
+    const dx = chestPt.x - headPt.x, dy = chestPt.y - headPt.y, dz = chestPt.z - headPt.z;
+    const wantYaw = Math.atan2(-dx, -dz);
+    const wantPitch = THREE.MathUtils.clamp(Math.asin(-dy / Math.max(0.1, Math.hypot(dx, dy, dz))), -0.5, 1.1);
+    const k = Math.min(1, (dt || 0.016) * 10);
+    yaw += Math.atan2(Math.sin(wantYaw - yaw), Math.cos(wantYaw - yaw)) * k;
+    pitch += (wantPitch - pitch) * k;
+  }
+
   function updateCamera(dt) {
     const look = input.consumeLook();
-    yaw -= look.x * 0.004;
-    pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003, -0.5, 1.1);
+    // Finer turning while aiming, so small adjustments are easy.
+    const fine = player.state.aiming ? 0.55 : 1;
+    yaw -= look.x * 0.004 * fine;
+    pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003 * fine, -0.5, 1.1);
+    if (!vehicles.driving && !airdrop.active) updateAim(look, dt);
 
     const car = vehicles.driving;
     const air = airdrop.active ? airdrop.phase : null;
@@ -343,7 +411,7 @@ async function start() {
     const busy = !!vehicles.driving || airdrop.active || player.state.disabled;
     const swim = player.state.mode === 'swim';
     const show = {
-      'fire-btn': !busy && !swim, 'aim-btn': !busy && !swim && gun, 'reload-btn': !busy && !swim && gun,
+      'fire-btn': !busy && !swim, 'aim-btn': !busy && !swim && input.state.weapon !== 'cutlass', 'reload-btn': !busy && !swim && gun,
       'crouch-btn': !busy && !swim, 'throw-btn': !busy && !swim && grenades.count > 0,
       'jump-btn': !vehicles.driving && !player.state.disabled,
     };
@@ -371,6 +439,7 @@ async function start() {
   window.game = {
     scene, camera, player, physics, renderer,
     captives, valley, land, surfaceAt, hostiles, combat, pickups, grenades, vehicles, airdrop, mission, input,
+    get aimLock() { return aimLock; },
     get dss() { return dss; },
     look(y, p) { yaw = y; pitch = p; },
     // Runs game logic without rendering, for automated tests.
@@ -378,7 +447,8 @@ async function start() {
       const idle = { state: move, consumeJump: () => { const j = !!move.jump; move.jump = false; return j; },
         consumeDrive: () => { const d = !!move.drive; move.drive = false; return d; },
         consumeThrow: () => { const t = !!move.throw; move.throw = false; return t; },
-        consumeCrouch: () => { const c = !!move.crouch; move.crouch = false; return c; }, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; } };
+        consumeCrouch: () => { const c = !!move.crouch; move.crouch = false; return c; }, consumePunch: () => { const p = !!move.punch; move.punch = false; return p; },
+        consumeKick: () => { const k = !!move.kick; move.kick = false; return k; } };
       for (let i = 0; i < seconds * 60; i++) {
         airdrop.update(FIXED, idle);
         vehicles.update(FIXED, { state: move, consumeDrive: () => mission.takeDriveRequest() });
