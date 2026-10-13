@@ -396,8 +396,8 @@ export function createScreens() {
           const ownTxt = it.kind === 'vehicle' ? '' : `Owned: ${owned}`;
           return `<div class="m-panel m-item ${eq ? 'eq' : ''}"><h3>${it.name}</h3><div class="img" style="background-image:url('ui/items/${it.k}.webp')"></div>${status}<div class="own">${ownTxt}</div><div class="acts">${acts}</div><div class="note">${note}</div></div>`;
         }).join('');
-        const entry = lo.air ? `${itemName(lo.air)} (air entry)` : 'Ground entry';
-        const sum = `${lo.vehicle ? `${itemName(lo.vehicle)} equipped` : 'No vehicle'} • Grenades ${lo.grenades}/${RULES.maxGrenades} • ${entry}`;
+        const entry = lo.air ? `${itemName(lo.air)} entry` : 'Ground entry';
+        const sum = `${lo.vehicle ? itemName(lo.vehicle) : 'No vehicle'} • Grenades ${lo.grenades}/${RULES.maxGrenades} • ${entry}`;
         return `<div class="bigtitle">${S.mode === 'shop' ? 'Shop' : 'Prepare your loadout'}</div>${chips(a)}
           <div class="items">${cards}</div>
           <div class="m-foot-l">${btn('Back', 'go', { kind: 'dark', icon: I.arrowL, data: `data-to="${S.mode === 'shop' ? '04' : '05'}"` })}</div>

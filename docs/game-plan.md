@@ -111,12 +111,18 @@ Code: `src/mission.js` (flow), `src/config.js` (all numbers and places), `src/sa
 - First-aid kits must never be inside buildings that can't be entered: every kit and ammo pack is checked against roofs, rocks and water, and moved to the nearest open ground.
 - Aiming: pressing Aim locks onto the nearest hostile in view; tapping a hostile picks them; swiping or dragging from Fire steers freely (finer while aiming).
 
+## 2D start screens (13 Oct, owner's HiFi designs)
+- Screens 01, 02, 03, 03A–03D, 04–10, 12, 13 built as real components (11 and 14 excluded as asked). Backgrounds: the owner's boards (old buttons painted out) and clean scenery references; items from the owner's item images; captive faces from the approved hostage sheets.
+- Accounts on the device only: verification is checked (never granted by the button), reset links are single-use and expire in 30 minutes; a test inbox stands in for email.
+- Three character slots; Male/Female × Hunter/Soldier (equal abilities); name rules; skin tone with a 3D preview; the mission keeps a snapshot of its character.
+- Shop: buying and equipping are separate; shortfall shown; one vehicle and one parachute or glider per loadout, 0–3 grenades; deducted at Begin Mission.
+- Briefing: five panels from the saved draft (location, captives, drone image, arrival and health advice, final with Begin Mission); the draft is kept until Begin Mission, so it never rerolls.
+- Profile (with Sign out) is a simple panel; Rankings and Settings say they aren't built yet.
+
 ## Not done yet
 
-**2D screens (from the owner)**
-- Account sign-up and sign-in, Home, character creation and three saved slots.
-- Assets and Entry shop.
-- Briefing panels, Profile and ranking.
+**Online services**
+- Real accounts and emails (device-only for now, owner's choice), cross-player rankings.
 
 **Settings**
 - Graphics, sensitivity, aim assist, button size and position, left-handed layout, vibration, subtitles, brightness, reduced motion.

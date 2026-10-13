@@ -132,14 +132,14 @@ body:not(.touch) #weapons { bottom: 10px; left: 16px; transform: none; }
   position: fixed; left: 50%; top: 62%; transform: translateX(-50%); background: var(--panel);
   padding: 6px 12px; border-radius: 8px; font-size: 14px; pointer-events: none;
 }
-.panel-screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(27, 20, 16, 0.72); z-index: 15; padding: 12px; }
+.panel-screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 12, 8, 0.66); z-index: 15; padding: 12px; }
 .panel {
   background: #2a2019; border: 1px solid rgba(255, 247, 234, 0.2); border-radius: 12px; padding: 14px 18px;
   display: grid; gap: 8px; max-width: min(92vw, 560px); max-height: 92vh; overflow: auto; text-align: center;
 }
 .panel .big { font-size: 22px; font-weight: 800; color: var(--accent); }
 .panel .small { font-size: 12px; opacity: 0.85; line-height: 1.4; }
-.panel button { min-height: 44px; border: 0; border-radius: 8px; background: #4a3a2c; color: var(--ink); font-size: 15px; padding: 0 14px; cursor: pointer; }
+.panel button { min-height: 44px; border: 1.5px solid rgba(232, 236, 226, 0.6); border-radius: 8px; background: rgba(9, 24, 17, 0.8); color: var(--ink); font-size: 15px; padding: 0 14px; cursor: pointer; }
 .panel button.on { background: var(--accent); color: #1b1410; }
 .panel .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .panel .row button { font-size: 13px; min-height: 40px; }

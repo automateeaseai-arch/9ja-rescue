@@ -292,6 +292,7 @@ body.in-menu { touch-action: manipulation; }
 .s12 .facts div { display: flex; align-items: center; gap: .5rem; }
 .s12 .facts svg { width: 1.4rem; height: 1.4rem; color: #e9e4d2; }
 .s12 .rewards { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-top: .6rem; }
+.s12 .reward svg { width: 1.5rem; height: 1.5rem; flex: none; }
 .s12 .reward { display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 3rem; border: 1.5px solid var(--m-gold); border-radius: .5rem; font-family: var(--m-head); font-weight: 700; font-size: 1.6rem; color: var(--m-gold); }
 .s12 .lo { display: flex; gap: .8rem; align-items: center; justify-content: center; margin-top: .6rem; font-size: .95rem; flex-wrap: wrap; }
 .s12 .lo span { display: inline-flex; align-items: center; gap: .35rem; }

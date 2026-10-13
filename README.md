@@ -69,6 +69,9 @@ Air drop clips in `public/models/anims/Air_Anims.glb` (78 KB): Rope_Hang_Idle (u
 
 Melee clips in `public/models/anims/Melee_Anims.glb` (61 KB): Right_Hand_Sword_Slash (cutlass, arms only, hit at 0.5 s clip time) and Spartan_Kick (whole body, hit at 0.55 s), Meshy animation task `01a13664-3ec4-7077-90c1-9b0905fec7aa` on the same rig (2 × 3 = 6 credits).
 
+## UI images (`public/ui/`, no Meshy credits)
+From the owner's uploads: `bg/01`–`13`, `03A`–`03D` are the HiFi board frames with the baked buttons painted out (OpenCV inpainting); `bg/05`–`10` and the briefing scenes (`savanna-village`, `savanna-kopjes`, `rock-arch`, `forest-trail`, `terraces`, `wetland`, `cargo-ramp`) are the clean scenery references; `drone` is the board 12 compound view. `portraits/` are crops of the board cards (male, female, male hunter, male soldier, female soldier); `female-hunter` is a render of the Forest Scout model. `captives/01`–`10` are face crops of the approved hostage sheets (030–039). `items/` are the owner's item images with the black background made transparent. WebP, about 4.6 MB in total, loaded per screen.
+
 ## Items register
 From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
 
