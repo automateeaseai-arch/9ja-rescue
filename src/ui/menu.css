@@ -332,3 +332,5 @@ body.in-menu { touch-action: manipulation; }
 .panel-screen .panel .big { font-family: var(--m-head); font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
 .panel-screen .panel button { font-family: var(--m-head); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; border-radius: 8px; }
 .panel-screen .panel button.gold { background: linear-gradient(180deg, #ffd765, #f0b733 55%, #d99a1c); color: #1a1406; border-color: transparent; }
+.m-mute { background: rgba(10,25,18,.72); }
+.m-mute svg { width: 1.5rem; height: 1.5rem; }

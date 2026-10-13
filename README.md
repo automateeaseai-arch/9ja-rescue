@@ -72,6 +72,19 @@ Melee clips in `public/models/anims/Melee_Anims.glb` (61 KB): Right_Hand_Sword_S
 ## UI images (`public/ui/`, no Meshy credits)
 From the owner's uploads: `bg/01`–`13`, `03A`–`03D` are the HiFi board frames with the baked buttons painted out (OpenCV inpainting); `bg/05`–`10` and the briefing scenes (`savanna-village`, `savanna-kopjes`, `rock-arch`, `forest-trail`, `terraces`, `wetland`, `cargo-ramp`) are the clean scenery references; `drone` is the board 12 compound view. `portraits/` are crops of the board cards (male, female, male hunter, male soldier, female soldier); `female-hunter` is a render of the Forest Scout model. `captives/01`–`10` are face crops of the approved hostage sheets (030–039). `items/` are the owner's item images with the black background made transparent. WebP, about 4.6 MB in total, loaded per screen.
 
+## Sounds register (`public/sounds/`, no credits, all CC0)
+Mono MP3s, about 0.6 MB in total, fetched after the game starts (menu sounds on the first tap).
+| File | Source | Used for |
+|---|---|---|
+| `steps.mp3` (40 KB) | Kenney Starter Kit FPS `walking.ogg` (+16 dB) | 12 footsteps, one per stride |
+| `land.mp3` | Kenney Starter Kit FPS `land.ogg` | landing after a jump or drop |
+| `engine-truck.mp3`, `engine-bike.mp3` (65 KB each) | Kenney Starter Kit Racing `engine.ogg`, `engine-motorcycle.ogg` | engine loops, pitch follows speed |
+| `impact.mp3` | Kenney Starter Kit Racing `impact.ogg` | vehicle hitting a wall or rock |
+| `ambience.mp3` (355 KB) | Kenney Starter Kit City Builder `ambience.ogg` (63 s, end cross-faded into the start) | birdsong and breeze |
+| `ui/*.mp3` | uisfx 0.4.0 "organic" pack (npm; audio CC0) | menu taps, choices, back, purchase, error, success, ammo pickup, mission complete |
+
+Built in code (`fx.js`, `ambience.js`): gunshots (crack plus thump or echo), reload clicks, punch, swish, splashes and wading, grenade boom, air-drop wind, first-aid chime, rainforest insects, river noise.
+
 ## Items register
 From the owner's pictures (Meshy image-to-3D, 2K texture, remeshed; then `opt.mjs` and `squeeze.mjs`). Outside the environment budget.
 

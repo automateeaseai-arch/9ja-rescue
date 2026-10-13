@@ -144,6 +144,9 @@ export function buildLand(scene, physics, { valleyH, phone = false }) {
   return { height: W.height, groundAt, roadXAt: W.roadXAt };
 }
 
+// 0 over the savanna, 1 in the valley (light, haze and sounds blend with it).
+export const valleyBlend = (z) => smooth(z, HS + 20, VALLEY_RECT.z0 + 80);
+
 // Light and haze for where the player is: warm and clear over the savanna,
 // softer and more humid in the valley, changing gradually in between.
 export function createAtmosphere({ scene, world, phone }) {
@@ -151,7 +154,7 @@ export function createAtmosphere({ scene, world, phone }) {
   const val = { fog: C('#dfe2d8'), near: 70, far: 300, hemi: 1.25, sun: 3.1, top: C('#4a93dc'), horizon: C('#e9e7dc') };
   const u = world.sky.material.uniforms;
   return (playerPos, caveDim = 0) => {
-    const t = smooth(playerPos.z, HS + 20, VALLEY_RECT.z0 + 80);
+    const t = valleyBlend(playerPos.z);
     scene.fog.color.copy(sav.fog).lerp(val.fog, t);
     scene.fog.near = lerp(sav.near, val.near, t) * (phone ? 0.75 : 1);
     scene.fog.far = Math.min(lerp(sav.far, val.far, t), phone ? 240 : 400);

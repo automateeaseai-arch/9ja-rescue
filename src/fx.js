@@ -1,6 +1,7 @@
 // Combat effects built in code: bullet tracers, muzzle flashes and
-// synthesised sounds (gunshot, punch). No downloads.
+// synthesised sounds (gunshot, punch, reload, splash, wind).
 import * as THREE from 'three';
+import { sound } from './sound.js';
 
 function flashTexture() {
   const c = document.createElement('canvas');
@@ -44,35 +45,49 @@ export function createFx(scene) {
   }
   let ti = 0, fi = 0;
 
-  // Sound: created on the first touch or key press (browsers require it).
-  let ctx = null, noise = null, windNode = null;
-  const unlock = () => {
-    if (!ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      ctx = new AC();
+  // Synthesised sounds go through the shared audio context (sound.js), so
+  // the mute switch covers them. The noise burst is made once.
+  let ctx = null, noise = null, windNode = null, out = null;
+  const live = () => {
+    const c = sound.context;
+    if (!c) return false;
+    if (!noise) {
+      ctx = c;
+      out = sound.output;
       noise = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
       const d = noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.5);
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    return true;
   };
-  for (const ev of ['touchstart', 'mousedown', 'keydown']) addEventListener(ev, unlock, { passive: true });
 
-  function play(volume, freq, length) {
-    if (!ctx || ctx.state !== 'running' || volume < 0.02) return;
+  function play(volume, freq, length, delay = 0, type = 'lowpass') {
+    if (!live() || volume < 0.02) return;
     const src = ctx.createBufferSource();
     src.buffer = noise;
     const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
+    f.type = type;
     f.frequency.value = freq;
     const g = ctx.createGain();
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + delay;
     g.gain.setValueAtTime(volume, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + length);
-    src.connect(f).connect(g).connect(ctx.destination);
+    src.connect(f).connect(g).connect(out);
     src.start(t);
     src.stop(t + length + 0.05);
+  }
+
+  // A short falling tone: the body of a nearby gunshot.
+  function thump(volume, freq, length) {
+    if (!live() || volume < 0.02) return;
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+    o.frequency.setValueAtTime(freq * 1.6, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + length);
+    g.gain.setValueAtTime(volume, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + length);
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + length + 0.05);
   }
 
   return {
@@ -97,7 +112,20 @@ export function createFx(scene) {
     gunshot(distance = 0) {
       const v = 0.5 / (1 + distance * 0.06);
       play(v, distance > 40 ? 900 : 2600, 0.25 + Math.min(distance, 60) * 0.004);
+      // Close by, a deep thump under the crack; far away, a rolling echo.
+      if (distance < 30) thump(v * 0.9, 95, 0.16);
+      else play(v * 0.5, 500, 0.9, 0.12);
     },
+    // Magazine out, then in and the bolt pulled (the reload takes 2 s).
+    reload() {
+      play(0.3, 2400, 0.05, 0.05, 'bandpass');
+      play(0.25, 1400, 0.08, 0.35, 'bandpass');
+      play(0.35, 2600, 0.05, 1.45, 'bandpass');
+      play(0.4, 1800, 0.06, 1.75, 'bandpass');
+      play(0.3, 3000, 0.04, 1.85, 'bandpass');
+    },
+    // A foot or a stroke in water.
+    paddle(volume = 0.3) { play(volume, 900 + Math.random() * 500, 0.22); play(volume * 0.5, 2600, 0.08); },
     punch() { play(0.6, 260, 0.12); },
     // A blade cutting the air.
     swish() { play(0.35, 3200, 0.16); },
@@ -110,14 +138,14 @@ export function createFx(scene) {
     },
     // Two rising notes when a first-aid kit is picked up.
     chime() {
-      if (!ctx || ctx.state !== 'running') return;
+      if (!live()) return;
       [660, 990].forEach((f, i) => {
         const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * 0.1;
         o.frequency.value = f;
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-        o.connect(g).connect(ctx.destination);
+        o.connect(g).connect(out);
         o.start(t);
         o.stop(t + 0.4);
       });
@@ -125,7 +153,7 @@ export function createFx(scene) {
     // Continuous air noise for the air drop: volume 0..1, pitch as a filter
     // frequency (low drone in the plane, rushing wind in freefall).
     wind(volume, freq = 800) {
-      if (!ctx || ctx.state !== 'running') return;
+      if (!live()) return;
       if (!windNode) {
         if (volume < 0.01) return;
         const src = ctx.createBufferSource();
@@ -135,7 +163,7 @@ export function createFx(scene) {
         f.type = 'lowpass';
         const g = ctx.createGain();
         g.gain.value = 0;
-        src.connect(f).connect(g).connect(ctx.destination);
+        src.connect(f).connect(g).connect(out);
         src.start();
         windNode = { src, f, g };
       }

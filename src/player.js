@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { loadSharedAnims, retarget, upperBody, lowerBody } from './anims.js';
+import { sound } from './sound.js';
 
 export const CHARACTERS = [
   { name: 'Hunter', url: 'models/Hunter_mobile.glb' },
@@ -155,6 +156,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   let speed = 0;
   let facing = Math.PI; // start facing -Z (towards the village house)
   let airborne = false;
+  let stepDist = 0, airT = 0, strokeT = 0;   // footstep, landing and swim-stroke timing
   let aim = 0;
   const airVel = new THREE.Vector3();
   let punchT = -1;            // clip time of the melee attack in progress, or -1
@@ -464,6 +466,27 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
         if (grounded && vy <= 0) airborne = false;
         next.x += c.x; next.y += c.y; next.z += c.z;
       }
+    }
+    // Footsteps: one per stride on the ground (a splash where it's wet),
+    // strokes while swimming, and a thud on landing after a jump or a drop.
+    if (state.mode === 'ground') {
+      if (grounded && !airborne) {
+        stepDist += Math.hypot(next.x - p.x, next.z - p.z);
+        const stride = speed > 3 ? 1.4 : state.crouch ? 0.55 : 0.8;
+        if (stepDist > stride) {
+          stepDist = 0;
+          if (depth > 0.12 && feet < water.level) opts.paddle?.(Math.min(0.45, 0.15 + depth * 0.35));
+          else sound.step(state.crouch ? 0.2 : speed > 3 ? 0.85 : 0.55, speed > 3 ? 1.06 : 1);
+        }
+      }
+      if (!grounded) airT += dt;
+      else {
+        if (airT > 0.35) sound.play('land', { volume: Math.min(1, 0.35 + airT * 0.5) });
+        airT = 0;
+      }
+    } else {
+      airT = 0;
+      if (state.mode === 'swim' && speed > 0.3 && (strokeT -= dt) <= 0) { strokeT = 1.1; opts.paddle?.(0.22); }
     }
     if (next.y < -30) { next.x = 0; next.y = 5; next.z = 12; vy = 0; } // fell out of the world
     body.setNextKinematicTranslation(next);

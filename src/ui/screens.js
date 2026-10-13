@@ -17,6 +17,7 @@ import { showPreview, hidePreview, setPreviewSkin } from './preview.js';
 import { logo } from './logo.js';
 import { RULES, ARRIVALS } from '../config.js';
 import { PERSONAS } from '../hostages.js';
+import { sound } from '../sound.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Number(n || 0).toLocaleString('en-GB');
@@ -25,6 +26,8 @@ const BG = (k) => `ui/bg/${k}.webp`;
 // Line icons (24 px grid, stroke = currentColor).
 const svg = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 const I = {
+  soundOn: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
+  soundOff: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
   back: svg('<path d="M15 5l-7 7 7 7"/>'),
   next: svg('<path d="M9 5l7 7-7 7"/>'),
   arrow: svg('<path d="M4 12h15M13 6l6 6-6 6"/>'),
@@ -101,6 +104,7 @@ export function createScreens() {
     root.querySelector('.m-toast')?.remove();
     const t = document.createElement('div');
     t.className = `m-toast ${bad ? 'bad' : ''}`;
+    if (bad) sound.ui('error', 0.5);
     t.textContent = text;
     root.appendChild(t);
     setTimeout(() => t.remove(), 2700);
@@ -127,6 +131,7 @@ export function createScreens() {
     el.hidden = !msg;
     el.className = `m-alert ${kind}`;
     el.innerHTML = msg || '';
+    if (msg && kind !== 'ok') sound.ui('error', 0.5);
   }
   async function busy(button, label, fn) {
     if (S.busy) return;
@@ -245,7 +250,7 @@ export function createScreens() {
         const name = c?.name ?? S.user.email.split('@')[0];
         const pic = c ? Chars.look(c.gender, c.role).portrait : null;
         return `<div class="head">${logo()}<div class="welcome">Welcome${c ? ' back' : ''},<b>${esc(name)}</b></div></div>
-        <div class="top-r">${chips(a)}<button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
+        <div class="top-r">${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
         <div class="missions">
           ${saved ? btn(`Continue mission<small>${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
@@ -696,8 +701,14 @@ export function createScreens() {
         <div class="row">${btn('Sign out', 'signOut', { kind: 'outline' })}${btn('Close', 'closeSheet')}</div>`);
     },
     settings() {
-      sheet(`<h2 class="m-title">Settings</h2><p>Settings are not built yet. Planned (game plan): graphics, sensitivity, aim assist, button size and position, left-handed layout, vibration, subtitles, brightness and reduced motion.</p>
+      sheet(`<h2 class="m-title">Settings</h2><div class="row">${btn(sound.muted ? 'Sound: off' : 'Sound: on', 'mute', { kind: 'outline', icon: sound.muted ? I.soundOff : I.soundOn })}</div><p>The other settings are not built yet. Planned (game plan): graphics, sensitivity, aim assist, button size and position, left-handed layout, vibration, subtitles, brightness and reduced motion.</p>
         <div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
+    },
+    mute() {
+      sound.setMuted(!sound.muted);
+      if (!sound.muted) sound.ui('select');
+      if ($('.m-sheet')) actions.settings();
+      else rerender();
     },
     signOut() { auth.signOut(); setUser(null); S.user = null; S.setup = null; closeSheet(); show('03A', { notice: 'Signed out.' }); },
 
@@ -760,6 +771,7 @@ export function createScreens() {
       const k = b.dataset.k, a = account(), price = RULES.prices[k];
       try {
         if (a.rp < price) { toast(`You need ${fmt(price - a.rp)} more RP.`, true); return; }
+        sound.ui('purchase', 0.7);
         const before = JSON.stringify(a);
         a.rp -= price;
         if (k === 'bike' || k === 'truck') a.inventory[k] = true; else a.inventory[k] = (a.inventory[k] || 0) + 1;
@@ -806,8 +818,18 @@ export function createScreens() {
     const b = e.target.closest('[data-act]');
     if (!b || b.disabled || !root.contains(b)) return;
     const f = actions[b.dataset.act];
-    if (f) { e.preventDefault(); f(b, e); }
+    if (f) { e.preventDefault(); tapSound(b); f(b, e); }
   });
+  // Menu taps: a soft press, a lighter tick for choices, a different one for going back.
+  const SELECTS = new Set(['pick', 'gender', 'role', 'swatch', 'briefTo', 'gren', 'equip', 'eye']);
+  const BACKS = new Set(['closeSheet', 'briefBack']);
+  function tapSound(b) {
+    const a = b.dataset.act;
+    if (a === 'buy' || a === 'mute') return;   // these play their own
+    if (SELECTS.has(a)) sound.ui('select', 0.5);
+    else if (BACKS.has(a) || /^back$/i.test(b.textContent.trim())) sound.ui('back', 0.5);
+    else sound.ui('press', 0.6);
+  }
   root.addEventListener('keydown', (e) => {
     const b = e.target.closest?.('.m-card[role="button"]');
     if (b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); actions[b.dataset.act]?.(b, e); }
@@ -815,6 +837,7 @@ export function createScreens() {
   root.addEventListener('submit', (e) => {
     e.preventDefault();
     const form = e.target;
+    sound.ui('press', 0.6);
     forms[form.dataset.submit]?.(form, form.querySelector('[type=submit]'));
   });
   root.addEventListener('input', (e) => {

@@ -5,6 +5,8 @@ import { createPlayer, loadCharacter, downloadStats } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { createFx } from './fx.js';
+import { sound } from './sound.js';
+import { createAmbience } from './ambience.js';
 import { createCombat } from './combat.js';
 import { createPickups } from './pickups.js';
 import { createGrenades } from './grenades.js';
@@ -117,7 +119,7 @@ async function start() {
   const spawn = new THREE.Vector3(roadX(34), groundHeight(roadX(34), 34), 34);
   let grenades = null;
   const player = await createPlayer(scene, physics, spawn, {
-    waterAt, canThrow: () => !!grenades?.ready, onThrow: () => grenades.begin(),
+    waterAt, paddle: (v) => fx.paddle(v), canThrow: () => !!grenades?.ready, onThrow: () => grenades.begin(),
   });
   player.setCharacter(await loadCharacter(0));
   // The mission's character (from its saved snapshot): model by gender and
@@ -132,6 +134,7 @@ async function start() {
   const siteCentre = toWorld(SITE.centre);
   const crouchBtn = document.getElementById('crouch-btn');
   const fx = createFx(scene);
+  const ambience = createAmbience({ waterAt });
   let combat = null, mission = null;
   // Ten hostiles; the mission places them (four roaming, six at the site).
   const hostiles = spawnHostiles(scene, {
@@ -202,10 +205,21 @@ async function start() {
     look: (y, p) => { yaw = y; pitch = p; },
   });
 
+  // Sound on/off in the pause menu (the same switch as on the Home screen).
+  const soundBtn = document.getElementById('pause-sound');
+  const soundLabel = () => { soundBtn.textContent = sound.muted ? 'Sound: off' : 'Sound: on'; };
+  soundBtn.addEventListener('click', () => { sound.setMuted(!sound.muted); soundLabel(); if (!sound.muted) sound.ui('select'); });
+  soundLabel();
+  for (const id of ['pause', 'down', 'results']) {
+    document.getElementById(id).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && b !== soundBtn) sound.ui('press', 0.6); });
+  }
+  document.getElementById('pause-btn').addEventListener('click', () => sound.ui('press', 0.5));
+
   // Menus and play: the game loop only runs (and renders) while playing.
   let playing = false;
   function enterPlay() {
     playing = true;
+    sound.preload();
     document.body.classList.remove('in-menu');
     clock.getDelta();
     if (!input.isTouch) {
@@ -215,6 +229,7 @@ async function start() {
   }
   function leavePlay(where) {
     playing = false;
+    sound.setGameActive(false);
     document.body.classList.add('in-menu');
     for (const el of document.querySelectorAll('.touch-ctrl, #interact-btn, #crosshair, #prompt, #waypoint, #guide, #tip')) el.hidden = true;
     input.state.aim = false;
@@ -377,6 +392,7 @@ async function start() {
     input.update();
     acc += dt;
     if (mission.paused) acc = 0;   // pause freezes the game (and the descent timer)
+    sound.setGameActive(!mission.paused);
     while (acc >= FIXED) {
       airdrop.update(FIXED, input);
       vehicles.update(FIXED, vehicleInput);
@@ -399,6 +415,7 @@ async function start() {
       valley.update(dt, player, camera);
     }
     atmosphere(player.position, valley?.caveDim ?? 0);
+    ambience.update(dt, player.position, { altitude: airdrop.active ? Math.max(0, airdrop.altitude) : 0, cave: valley?.caveDim ?? 0, driving: !!vehicles.driving });
     // High up: see further (the haze starts further away and the view reaches the ground).
     const alt = airdrop.active ? Math.max(0, airdrop.altitude) : 0;
     scene.fog.near += alt * 1.6;
@@ -484,6 +501,7 @@ async function start() {
   });
   window.game.screens = screens;
   window.game.enterPlay = enterPlay;
+  window.game.sound = sound;
 }
 
 start().catch((err) => {

@@ -22,6 +22,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RULES, SITE, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
 import { PERSONAS } from './hostages.js';
+import { sound } from './sound.js';
 
 const VERSION = 1;
 const STAGE_TEXT_SITE = 'the captive site (the walled plantation compound in the River Valley)';
@@ -363,6 +364,7 @@ export function createMission(ctx) {
   function onDiscover(c) { showTip(`You found ${c.name}.`, 4); checkpoint(); }
   function onDown() {
     down = true;
+    sound.ui('error', 0.5);
     ui.down.hidden = false;
   }
 
@@ -388,6 +390,7 @@ export function createMission(ctx) {
     for (const c of list) c.state = 'departed';
     stage = 'COMPLETED';
     finished = true;
+    sound.ui('achievement', 0.7);
     const rp = list.length * RULES.rpPerCaptive;
     const first = !account.completed.includes(setup.id);
     if (first) {
@@ -420,6 +423,7 @@ export function createMission(ctx) {
         label: `Free ${c.name}`, enabled: true,
         run: () => {
           captives.free(c);
+          sound.play('success', { volume: 0.5 });
           showTip(`${c.name} is free and following you.`, 3);
           checkpoint();
         },
@@ -526,7 +530,7 @@ export function createMission(ctx) {
     if (stage === 'ARRIVAL' && !airdrop.active && player.state.mode !== 'drive') arrive();
     if (!reachedSite && Math.hypot(pp.x - site.x, pp.z - site.z) < site.r + 20) { reachedSite = true; checkpoint(); }
     if (stage === 'EXPLORE' && reachedSite) stage = 'CLEAR_SITE';
-    if (stage === 'CLEAR_SITE' && left(siteUnits()) === 0) { stage = 'RESCUE'; showTip('Site clear. Find and free the captives.', 4); checkpoint(); }
+    if (stage === 'CLEAR_SITE' && left(siteUnits()) === 0) { stage = 'RESCUE'; sound.play('success', { volume: 0.5 }); showTip('Site clear. Find and free the captives.', 4); checkpoint(); }
     if (stage === 'RESCUE' && captives.units.length && captives.units.every((c) => c.state === 'following')) {
       stage = 'ESCORT';
       showTip('Escort the captives to DSS. They follow your path: use the bridges.', 5);

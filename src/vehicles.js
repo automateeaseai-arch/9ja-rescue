@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
+import { sound } from './sound.js';
 
 const TYPES = {
   truck: {
@@ -140,7 +141,13 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
     if (controller.computedGrounded()) v.vy = -1;
     // Blocked by something solid: lose most of the speed.
     const want = Math.hypot(dx, dz), got = Math.hypot(m.x, m.z);
-    if (want > 0.02 && got < want * 0.4) v.speed *= 0.5;
+    if (want > 0.02 && got < want * 0.4) {
+      if (Math.abs(v.speed) > 6 && v === st.driving && (v.bumpT ?? 0) <= 0) {
+        sound.play('impact', { volume: Math.min(1, Math.abs(v.speed) / 16) });
+        v.bumpT = 0.6;
+      }
+      v.speed *= 0.5;
+    }
     v.pos.set(p.x + m.x, p.y + m.y, p.z + m.z);
     // Safety net: never sink through the ground.
     const g = groundAt(v.pos.x, v.pos.z, v.pos.y - v.half.h);
@@ -224,6 +231,16 @@ export function createVehicles({ scene, physics, player, hostiles, heightAt, wat
         place(v);
       }
       if (st.driving) seatPlayer(st.driving);
+      // Engine: idles low, rises in pitch and volume with speed and throttle.
+      for (const v of list) {
+        v.bumpT = (v.bumpT ?? 0) - dt;
+        if (v === st.driving) {
+          v.engine ??= sound.loop(v.kind);
+          const f = Math.min(1, Math.abs(v.speed) / v.T.maxSpeed);
+          const th = Math.abs(input.state.moveY ?? 0) > 0.1 ? 1 : 0;
+          v.engine.set(0.28 + f * 0.3 + th * 0.08, (v.kind === 'bike' ? 0.8 : 0.6) + f * 1.3 + th * 0.12);
+        } else if (v.engine) { v.engine.stop(); v.engine = null; }
+      }
     },
     stage,
     leave() { if (st.driving) exit(st.driving); },

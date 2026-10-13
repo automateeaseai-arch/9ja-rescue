@@ -3,6 +3,7 @@
 // box, +10 bullets). Each hovers over a glowing ring (green for health,
 // amber for ammo), slowly turns, and is collected once on contact.
 import * as THREE from 'three';
+import { sound } from './sound.js';
 import { loadGlb } from './player.js';
 import { RULES } from './config.js';
 
@@ -112,7 +113,8 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
           if (ok) {
             k.used = true;
             k.g.visible = false;
-            fx?.chime();
+            if (k.kind === 'health') fx?.chime();
+            else sound.play('bonus', { volume: 0.45 });
             onCollect?.(k);
           } else fullHint = 0.3;
         }

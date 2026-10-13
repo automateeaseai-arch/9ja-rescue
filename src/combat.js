@@ -127,6 +127,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
   function startReload() {
     if (st.reload > 0 || st.mag >= RULES.magazine || st.reserve <= 0) return;
     st.reload = RULES.reloadTime;
+    fx.reload();
     st.burstLeft = 0;
   }
 
