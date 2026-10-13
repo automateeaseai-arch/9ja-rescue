@@ -19,6 +19,7 @@ import { buildLand, createAtmosphere, VALLEY_ORIGIN } from './land.js';
 import { HOSTAGE_SPOTS as CAMP_SPOTS } from './camp.js';
 import * as VL from './valley/layout.js';
 import { updateCulling } from './kit/chunks.js';
+import { treeAt } from './kit/crowns.js';
 
 const canvas = document.getElementById('game');
 const loadingFill = document.getElementById('loading-fill');
@@ -196,7 +197,7 @@ async function start() {
   const driveBtn = document.getElementById('drive-btn');
   // Air drop from a cargo plane (test buttons for now; missions will choose when).
   // The test plane flies north over the River Valley; the open ramp looks back south.
-  const airdrop = createAirDrop({ scene, player, fx, heightAt: surfaceAt, waterAt });
+  const airdrop = createAirDrop({ scene, player, fx, heightAt: surfaceAt, waterAt, hurt: (n) => combat.hurt(n) });
   const dropTest = (kind) => {
     if (vehicles.driving || airdrop.active || player.state.disabled) return;
     airdrop.start(kind, VALLEY_ORIGIN.x + 10, VALLEY_ORIGIN.z + 120, Math.PI);
@@ -293,7 +294,11 @@ async function start() {
     // Closer over the shoulder while aiming; further back in a vehicle or in the air.
     const wantDist = air ? airdrop.camDist : car ? car.T.camDist : player.state.aiming ? 2.8 : CAM_DIST;
     camDist = air === 'plane' ? wantDist : THREE.MathUtils.damp(camDist, wantDist, 3, dt || 1);
-    const dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
+    let dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
+    // In the air, come in closer rather than sit inside a tree's leaves.
+    if (air) {
+      while (dist > 3 && treeAt(head.x + camOffset.x * dist, head.y + camOffset.y * dist, head.z + camOffset.z * dist, 0.5)) dist -= 0.5;
+    }
 
     camera.position.copy(head).addScaledVector(camOffset, dist);
     // Slight over-the-shoulder offset to the right (centred in a vehicle).
@@ -381,7 +386,10 @@ async function start() {
       if (input.isTouch) document.getElementById(id).hidden = !!vehicles.driving || (airdrop.active && id !== 'jump-btn');
     }
     // Air drop hints.
-    if (airdrop.active) {
+    if (airdrop.snagged) {
+      promptEl.hidden = false;
+      promptEl.textContent = `Caught in a tree! The ${airdrop.kind === 'parachute' ? 'parachute' : 'glider'} is stuck`;
+    } else if (airdrop.active) {
       const ph = airdrop.phase, J = input.isTouch ? 'Jump' : 'Space';
       const what = airdrop.kind === 'parachute' ? 'parachute' : 'glider';
       promptEl.hidden = false;

@@ -32,6 +32,7 @@ const PAL = {
 // valley code can keep working in its own coordinates.
 function offsetPhysics(physics, o) {
   return {
+    offset: o,
     createRigidBody(desc) {
       const t = desc.translation;
       desc.translation = { x: t.x + o.x, y: t.y, z: t.z + o.z };

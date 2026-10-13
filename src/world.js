@@ -3,6 +3,7 @@
 // per model). Trees, bushes, grass, the road, sky and dust are built in code so
 // they can move with the wind at no generation cost.
 import * as THREE from 'three';
+import { addTreeShape } from './kit/crowns.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -367,6 +368,8 @@ function buildTrees(scene, physics, rand, spots) {
       k++;
     }
     addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(2, big ? 0.5 : 0.3), { x, y: y + 2, z });
+    addTreeShape(physics, x, z, y + h * 1.22 - 0.7, y + h * 1.22 + 1.4, w * 0.95);
+    addTreeShape(physics, x, z, y, y + h * 1.22 - 0.7, big ? 0.6 : 0.4);
   });
   trunks.castShadow = canopy.castShadow = true;
   trunks.receiveShadow = canopy.receiveShadow = true;

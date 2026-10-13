@@ -10,6 +10,7 @@
 // after the jump (sooner over high ground).
 import * as THREE from 'three';
 import { loadGlb } from './player.js';
+import { treeAt } from './kit/crowns.js';
 
 const PLANE_SCALE = 20;        // model length 1.48 → about 30 m, like a C-130
 const FLOOR_Y = 0.95;          // cargo floor height inside the scaled model
@@ -26,8 +27,8 @@ const KINDS = {
     pose: { clip: 'barHang', rate: 1 }, camDist: 9, camHeight: 2.2 },
 };
 
-// opts: scene, player, fx, heightAt(x, z, yHint) walking height, waterAt(x, z)
-export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
+// opts: scene, player, fx, heightAt(x, z, yHint) walking height, waterAt(x, z), hurt(damage)
+export function createAirDrop({ scene, player, fx, heightAt, waterAt, hurt }) {
   const group = new THREE.Group();      // the plane: local +Z is the nose, floor at y = 0
   group.visible = false;
   scene.add(group);
@@ -76,6 +77,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
     if (player.state.disabled) return;
     st.kind = kind;
     st.phase = 'plane';
+    st.snagged = false;
     st.t = 0;
     st.planeHeading = heading;
     // Fly above the highest ground under the path.
@@ -108,15 +110,46 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
     if (g) g.visible = true;
   }
 
+  // Points that can catch in a tree, in the flyer's frame (x across, y up, z forward):
+  // the body, and the canopy or wing (centre and tips).
+  const PROBES = {
+    parachute: [[0, 0.3, 0], [0, 1.2, 0], [0, 5.0, 0.3], [-2.6, 4.2, 0.3], [2.6, 4.2, 0.3]],
+    glider: [[0, 0.3, 0], [0, 1.2, 0], [0, 4.4, 0], [-4.3, 4.6, -0.3], [4.3, 4.6, -0.3]],
+    fall: [[0, 0.3, 0], [0, 1.0, 0]],
+  };
+  const probe = new THREE.Vector3(), yawQ = new THREE.Quaternion(), Yax = new THREE.Vector3(0, 1, 0);
+  function hitsTree(set) {
+    yawQ.setFromAxisAngle(Yax, st.heading);
+    for (const p of PROBES[set]) {
+      probe.set(p[0], p[1], p[2]).applyQuaternion(yawQ).add(pos);
+      if (treeAt(probe.x, probe.y, probe.z)) return true;
+    }
+    return false;
+  }
+
+  // Caught in a tree: the parachute or glider stays in the branches and the
+  // player drops to the ground below.
+  function snag() {
+    st.phase = 'snag';
+    st.t = 0;
+    st.snagY = pos.y;
+    vel.x *= 0.15; vel.z *= 0.15;
+    vel.y = Math.min(vel.y, 0) * 0.3;
+    fx?.punch();
+  }
+
   function land(ground) {
+    if (st.phase === 'snag') hurt?.(Math.round(Math.min(35, 5 + Math.max(0, st.snagY - ground) * 1.5)));
+    const snagged = st.phase === 'snag';
     st.phase = 'landed';
+    st.snagged = snagged;
     st.t = 0;
     const w = waterAt?.(pos.x, pos.z);
     player.leaveRide(pos.x, w && w.level > ground ? Math.max(ground, w.level - 1.2) : ground, pos.z);
     st.landed = { x: pos.x, z: pos.z, y: ground, heading: st.heading };
     // The glider comes down just behind the player.
     const g = gear.glider;
-    if (st.kind === 'glider' && g) g.position.set(pos.x - Math.sin(st.heading) * 1.2, ground, pos.z - Math.cos(st.heading) * 1.2);
+    if (st.kind === 'glider' && g && !snagged) g.position.set(pos.x - Math.sin(st.heading) * 1.2, ground, pos.z - Math.cos(st.heading) * 1.2);
   }
 
   const q = new THREE.Quaternion(), e = new THREE.Euler(), seat = new THREE.Vector3(), up = new THREE.Vector3();
@@ -179,10 +212,22 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
       fx?.wind(0.35, 260);
       return;
     }
+    if (st.phase === 'snag') {
+      // Dropping out of the tree.
+      vel.y = Math.max(-30, vel.y - 9.8 * dt);
+      pos.addScaledVector(vel, dt);
+      e.set(0, st.heading, 0, 'YXZ');
+      player.ride({ pos: pos.clone(), heading: st.heading, show: true, quat: q.setFromEuler(e).clone(), pose: { clip: 'ropeHang', rate: 2 }, noRifle: true });
+      st.camDist = 6; st.camHeight = 1.4;
+      fx?.wind(0.1, 600);
+      const ground = heightAt(pos.x, pos.z, pos.y);
+      if (pos.y <= ground) land(ground);
+      return;
+    }
     if (st.phase === 'landed') {
       // The parachute or glider settles behind the player, tips over and is gone.
       const g = gear[st.kind], L = st.landed;
-      if (g) {
+      if (g && !st.snagged) {
         // Settles to the ground and falls over backwards, then is gone.
         g.visible = st.t < 2.6;
         g.position.y = Math.max(L.y - 0.3, g.position.y - dt * 3);
@@ -219,6 +264,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
       fx?.wind(0.25 + Math.min(1, -vel.y / 30) * 0.6, 900 + Math.min(1, -vel.y / 30) * 1400);
       if ((jumpPressed && st.t > 0.4) || st.t > K.free) deploy();
       if (pos.y <= ground) land(ground);
+      else if (hitsTree('fall')) snag();
       return;
     }
 
@@ -242,6 +288,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
     st.camDist = K.camDist; st.camHeight = K.camHeight;
     fx?.wind(0.12 + st.speed / 60, 500);
     if (pos.y <= ground + 0.02) land(ground);
+    else if (st.open > 0.6 && hitsTree(st.kind)) snag();
   }
 
   // Code-built cargo details inside the Meshy bay: floor rails, red webbing
@@ -290,6 +337,7 @@ export function createAirDrop({ scene, player, fx, heightAt, waterAt }) {
     update,
     start,
     get active() { return st.phase !== 'off' && st.phase !== 'landed'; },
+    get snagged() { return st.phase === 'snag' || (st.phase === 'landed' && st.snagged); },
     get phase() { return st.phase; },
     get kind() { return st.kind; },
     get heading() { return st.phase === 'plane' ? st.planeHeading + Math.PI : st.heading; },

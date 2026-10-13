@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { addWind, addFixedCollider } from '../world.js';
+import { addTreeShape } from './crowns.js';
 import { addInstanced, mat } from './chunks.js';
 import * as T from './textures.js';
 
@@ -93,6 +94,8 @@ export function rainforestTrees(scene, physics, trunkModel, spots, heightAt, ran
       vines.push({ m: mat(x + Math.cos(a) * r, top - 2, z + Math.sin(a) * r, rand() * 6.28, [1.8, len, 1.8]), c: tint(rand) });
     }
     addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(3, 0.9 * s), { x, y: y + 3, z });
+    addTreeShape(physics, x, z, top - 6.5, top + 2.5, crownR * 1.2);
+    addTreeShape(physics, x, z, y, top - 6, 1.6 * s);
   }
   addInstanced(scene, trunkModel.geo, trunkModel.mat, trunks, { maxDist: 260, lo: trunkModel.lo, loDist: 90 });
   addInstanced(scene, upper, bark, uppers, { maxDist: 300 });
@@ -120,6 +123,8 @@ export function midTrees(scene, physics, spots, heightAt, rand) {
       cards.push({ m: mat(x + Math.cos(a) * rr, y + h - 0.5 + rand() * 2.2 - rr * 0.3, z + Math.sin(a) * rr, rand() * 6, r * (0.8 + rand() * 0.5), (rand() - 0.5) * 1.4, (rand() - 0.5) * 1.4), c: tint(rand, 0.75, 0.4) });
     }
     addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(1.5, 0.22 * s), { x, y: y + 1.5, z });
+    addTreeShape(physics, x, z, y + h - 1.2, y + h + 1.8, r * 1.2);
+    addTreeShape(physics, x, z, y, y + h - 1.2, 0.3);
   }
   addInstanced(scene, trunk, bark, trunks, { maxDist: 180 });
   addInstanced(scene, card, m, cards, { maxDist: 200 });
@@ -159,6 +164,8 @@ export function palms(scene, physics, spots, heightAt, rand, kind = 'oil') {
       frondItems.push({ m: mat(px, py - 0.2, pz, a, s * (0.85 + rand() * 0.3), 0, up), c: tint(rand, 0.8, 0.3, f % 4 === 0 ? 1.08 : 0.98) });
     }
     addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(1.5, oil ? 0.45 : 0.3), { x, y: y + 1.5, z });
+    addTreeShape(physics, px, pz, py - 2.2, py + 1.2, 3.6 * s);
+    addTreeShape(physics, (x + px) / 2, (z + pz) / 2, y, py - 2.2, 0.5 + Math.hypot(px - x, pz - z) / 2);
   }
   addInstanced(scene, seg, trunkMat, segItems, { maxDist: 300 });
   addInstanced(scene, frond, frondMat, frondItems, { maxDist: 300 });
@@ -278,6 +285,8 @@ export function acacias(scene, physics, spots, heightAt, rand) {
       cards.push({ m: mat(x + Math.cos(a) * r, y + h * 1.22 + rand() * 1.2 - (r / w) * 0.6, z + Math.sin(a) * r, rand() * 6.28, w * (0.6 + rand() * 0.4), (rand() - 0.5) * 1.2, (rand() - 0.5) * 1.2), c: tint(rand, 0.85, 0.3) });
     }
     addFixedCollider(physics, RAPIER.ColliderDesc.cylinder(2, 0.3 * s), { x, y: y + 2, z });
+    addTreeShape(physics, x, z, y + h * 1.22 - 0.7, y + h * 1.22 + 1.4, w * 0.95);
+    addTreeShape(physics, x, z, y, y + h * 1.22 - 0.7, 0.4 * s);
   }
   addInstanced(scene, trunkG, bark, trunks, { maxDist: 300 });
   addInstanced(scene, card, leaf, cards, { maxDist: 300 });
