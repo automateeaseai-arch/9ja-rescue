@@ -104,6 +104,7 @@ const CROUCH_SPEED = 1.2;
 const SWIM_SPEED = 1.1, SWIM_FAST = 2.0;
 const SWIM_DEPTH = 1.25;     // feet below the water surface while swimming
 const CLIMB_SPEED = 0.9;     // metres per second up a wall or rock
+const CLIMB_HANDS = 1.2;     // feet this far below the top: the hands are over the edge and stop
 const CLIMB_MIN = 1.0, CLIMB_MAX = 3.8; // ledge heights (above the feet) that can be climbed
 const PUNCH_RATE = 1.6;      // jab clip playback speed
 const PUNCH_STRIKE = 0.52;   // clip time (s) when the fist lands
@@ -412,6 +413,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       // Up the wall, then step over onto the top.
       if (climb.over === 0) {
         next.y = Math.min(climb.top + FOOT_OFFSET + 0.05, p.y + CLIMB_SPEED * dt);
+        climb.below = climb.top - (next.y - FOOT_OFFSET);   // how far the feet are below the top
         if (next.y >= climb.top + FOOT_OFFSET + 0.05) climb.over = 0.001;
       } else {
         climb.over += dt;
@@ -443,6 +445,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
             climb.top = ledge.top;
             climb.dir.copy(dir);
             climb.over = 0;
+            climb.below = ledge.top - (p.y - FOOT_OFFSET);
             climb.dist = ledge.over;
             climb.moved = 0;
             facing = Math.atan2(dir.x, dir.z);
@@ -532,8 +535,16 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     // Swimming forward lies flat: lift the body to the surface.
     model.position.y = state.mode === 'swim' ? swimMove * 0.7 : 0;
     if (state.mode === 'climb') {
-      W.climb = 1;
-      actions.climb.timeScale = climb.over ? 0.6 : CLIMB_SPEED / 0.47;
+      // Hand over hand while the chest is below the top; once the upper body
+      // is above it (feet within 1.2 m of the top) the hands stop reaching and
+      // stay planted while the body rises, then blend into a crouched step
+      // over the edge (owner, 14 Oct).
+      const up = climb.over ? 1 : clamp01((CLIMB_HANDS - climb.below) / CLIMB_HANDS);
+      const handsOver = climb.over || climb.below < CLIMB_HANDS;
+      actions.climb.timeScale = handsOver ? 0 : CLIMB_SPEED / 0.47;
+      const step = climb.over ? Math.min(1, 0.4 + climb.over / 0.35) : up * 0.4;
+      W.climb = 1 - step;
+      W.crouchWalk = step;
     } else if (state.mode === 'swim') {
       W.swimIdle = 1 - swimMove;
       W.swimForward = swimMove;

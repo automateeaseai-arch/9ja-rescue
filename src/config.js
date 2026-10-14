@@ -16,7 +16,9 @@ export const RULES = {
   magazine: 10,
   startReserve: 50,        // 10 loaded + 50 reserve
   reloadTime: 2.0,
-  ammoPack: 10,
+  ammoPack: 10,            // old saved missions' ammo packs
+  ammoCrate: 5,            // each of the four ammunition boxes (owner, 14 Oct)
+  ammoCrates: 4,
   rpPerCaptive: 5000,
   missionPoints: 2,
   maxGrenades: 3,          // equipped per mission

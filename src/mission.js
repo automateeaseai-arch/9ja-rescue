@@ -3,7 +3,7 @@
 // One mission at a time, generated from a saved seed: a random captive site
 // (SITES: the valley plantation compound or the savanna kopje camp), a
 // validated random arrival, four roaming hostiles on patrol beats and eight
-// health kits chosen along the way to the site, six fixed ammo packs, six
+// health kits chosen along the way to the site, four ammunition boxes (+5 bullets each), six
 // defenders on posts drawn from the site's pool, two kits in its yard, and
 // one or two random captives (alternating per new mission) in random rooms.
 // Stages:
@@ -170,7 +170,13 @@ export function createMission(ctx) {
       yHint: o.k.deck ? ctx.land.height(o.pos[0], o.pos[1]) + 3 : o.k.cave ? 7.6 : undefined,
     }));
     shuffle(site.def.insideKits).slice(0, 2).forEach((p, i) => { const [wx, wz] = to(p); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz }); });
-    const ammo = AMMO_SPOTS.map((a, i) => { const [x, z] = spot(a); return { id: `ammo-${i + 1}`, kind: 'ammo', x, z }; });
+    // Four ammunition boxes along the way in, from the spots the kits didn't take.
+    const cratePool = [...pool.filter((o) => !kits.includes(o) && !o.k.deck && !o.k.cave), ...AMMO_SPOTS.map((k) => ({ k, pos: spot(k) }))];
+    const awayFromKits = (o) => kits.every((q) => far(o.pos, q.pos[0], q.pos[1], 15));
+    const crates = pick(cratePool, RULES.ammoCrates, (o) => corridor(o.pos) * 0.8,
+      (o) => far(o.pos, arrival.x, arrival.z, 15) && far(o.pos, site.x, site.z, 55) && awayFromKits(o), 40);
+    for (const o of shuffle(cratePool)) { if (crates.length >= RULES.ammoCrates) break; if (!crates.includes(o) && far(o.pos, site.x, site.z, site.r + 8)) crates.push(o); }
+    const ammo = crates.map((o, i) => ({ id: `crate-${i + 1}`, kind: 'crate', x: o.pos[0], z: o.pos[1], yaw: r() * Math.PI * 2 }));
     // Six defenders: the fixed posts, then random ones from the site's pool.
     const posts = site.def.defenders;
     const defenderPosts = [...posts.filter((d) => d[3] === 'fixed'), ...shuffle(posts.filter((d) => d[3] !== 'fixed'))].slice(0, 6);
@@ -513,9 +519,12 @@ export function createMission(ctx) {
     switch (stage) {
       case 'ARRIVAL': return { text: airdrop.active ? 'Air entry: land in the marked area' : 'Arriving…', at: v3(setup.arrival.x, setup.arrival.z), what: 'Landing area' };
       case 'EXPLORE': {
-        const k = nearest(kitsLeft, (o) => v3(o.x, o.z, pp.y));
+        // The arrow leads to the nearest first-aid kit or ammunition box.
+        const cratesLeft = setup.ammo.filter((a) => a.kind === 'crate' && !collected.has(a.id));
+        const k = nearest([...kitsLeft, ...cratesLeft], (o) => v3(o.x, o.z, pp.y));
         const close = k && Math.hypot(k.x - pp.x, k.z - pp.z) < 160;
-        return { text: `Collect health supplies (${got}/8), then go to the captive site`, at: close ? v3(k.x, k.z) : entrance(), what: close ? 'First-aid kit' : 'Captive site' };
+        return { text: `Collect health supplies (${got}/8) and ammunition, then go to the captive site`, at: close ? v3(k.x, k.z) : entrance(),
+          what: close ? (k.kind === 'crate' ? 'Ammo box' : 'First-aid kit') : 'Captive site' };
       }
       case 'CLEAR_SITE': {
         const inside = Math.hypot(pp.x - site.x, pp.z - site.z) < site.r;
@@ -601,10 +610,14 @@ export function createMission(ctx) {
     const total = left(hostiles.units), sl = left(siteUnits());
     const kitsGot = 8 - setup.kits.filter((k) => k.id.startsWith('kit-') && !k.id.startsWith('kit-in') && !collected.has(k.id)).length;
     const freed = captives.units.filter((c) => ['following', 'boarding', 'boarded', 'departed'].includes(c.state)).length;
-    const counts = `${kitsGot}/8|${total}/10|${sl}/6|${freed}/${setup.captives.length}|${grenades.count}`;
+    const crateList = setup.ammo.filter((a) => a.kind === 'crate');
+    const cratesGot = crateList.filter((a) => collected.has(a.id)).length;
+    const counts = `${cratesGot}/${crateList.length}|${kitsGot}/8|${total}/10|${sl}/6|${freed}/${setup.captives.length}|${grenades.count}`;
     if (counts !== lastCounts) {
       lastCounts = counts;
       ui.cKits.textContent = `${kitsGot}/8`;
+      ui.cCrates.textContent = `${cratesGot}/${crateList.length}`;
+      ui.cCrates.parentElement.hidden = !crateList.length;
       ui.cHostiles.textContent = `${total}/10`;
       ui.cSite.textContent = `${sl}/6`;
       ui.cCaptives.textContent = `${freed}/${setup.captives.length}`;
@@ -616,6 +629,7 @@ export function createMission(ctx) {
     if (focus !== lastFocus) {
       lastFocus = focus;
       for (const k of ['kits', 'hostiles', 'site', 'captives']) ui.counts.querySelector(`.c-${k}`).classList.toggle('focus', k === focus);
+      ui.counts.querySelector('.c-crates').classList.toggle('focus', focus === 'kits');
     }
     ui.saveWarn.hidden = !saveFailed();
     // Interact.
@@ -649,7 +663,7 @@ export function createMission(ctx) {
     const el = (id) => document.getElementById(id);
     const u = {
       objective: el('objective'), counts: el('counts'),
-      cKits: el('c-kits'), cHostiles: el('c-hostiles'), cSite: el('c-site'), cCaptives: el('c-captives'), cGrenades: el('c-grenades'), way: el('waypoint'), wayDist: el('way-dist'),
+      cKits: el('c-kits'), cCrates: el('c-crates'), cHostiles: el('c-hostiles'), cSite: el('c-site'), cCaptives: el('c-captives'), cGrenades: el('c-grenades'), way: el('waypoint'), wayDist: el('way-dist'),
       guide: el('guide'), guideArrow: el('guide-arrow'), guideText: el('guide-text'),
       interact: el('interact-btn'), tip: el('tip'), down: el('down'), results: el('results'), resultsBody: el('results-body'),
       pause: el('pause'), pauseInfo: el('pause-info'), saveWarn: el('save-warn'),
