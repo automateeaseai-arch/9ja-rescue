@@ -466,11 +466,11 @@ export function createScreens() {
        <p>Your arrival point: <b>${esc(d.arr.name)}</b>, on ${esc(d.arr.area)}.</p>`,
       `<h3>The kidnapping</h3><p>Armed men stopped travellers on the valley road and took ${d.n === 1 ? 'one person' : `${d.n} people`} to a hidden site.</p>${faces}
        <p>${d.caps.map((c) => esc(c.name)).join(' and ')} ${d.n === 1 ? 'is' : 'are'} waiting for you.</p>`,
-      `<h3>Drone report</h3><p>${d.site.brief} Six armed men guard it.</p>
-       <p>${d.site.held} Four more hostiles patrol the land around it.</p>`,
+      `<h3>Drone report</h3><p>${d.site.brief} Eight armed men guard it.</p>
+       <p>${d.site.held} Seven more hostiles patrol the land around it.</p>`,
       `<h3>Your arrival</h3><p>${d.air ? `You jump from a cargo plane over ${esc(d.arr.area)} and steer your ${itemName(d.air).toLowerCase()} for about 30 seconds to the marked landing area.` : `You arrive on foot at ${esc(d.arr.area)}.`}${d.vehicle ? ` Your ${itemName(d.vehicle).toLowerCase()} is parked beside the arrival point.` : ''}</p>
        <p><b>Collect health supplies to improve your chances before reaching the captive site.</b> Eight first-aid kits lie along the way in; the arrow guides you.</p>`,
-      `<div class="top5">${faces}<div class="facts"><div>${I.captives}${d.n} ${plural}</div><div>${I.hostile}10 hostiles</div><div>${I.shield}DSS extraction</div></div></div>
+      `<div class="top5">${faces}<div class="facts"><div>${I.captives}${d.n} ${plural}</div><div>${I.hostile}15 hostiles</div><div>${I.shield}DSS extraction</div></div></div>
        <p>Collect health supplies. Clear the captive site. Rescue all captives and deliver them to DSS.</p>
        <div class="rewards"><div class="reward">${I.coins}+${fmt(RULES.rpPerCaptive * d.n)} RP</div><div class="reward">${I.chevrons}+${RULES.missionPoints} MP</div></div>
        <div class="lo"><span>${I.user}${esc(d.c?.name ?? '-')}</span>•<span>${I.rifle}${esc(d.c ? d.c.role[0].toUpperCase() + d.c.role.slice(1) : '')}</span>•<span>${d.air ? I.plane : I.bike}${d.air ? itemName(d.air) : d.vehicle ? itemName(d.vehicle) : 'On foot'}</span></div>`,

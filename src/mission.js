@@ -2,15 +2,15 @@
 //
 // One mission at a time, generated from a saved seed: a random captive site
 // (SITES: the valley plantation compound or the savanna kopje camp), a
-// validated random arrival, four roaming hostiles on patrol beats and eight
+// validated random arrival, seven roaming hostiles on patrol beats and eight
 // health kits chosen along the way to the site, four ammunition boxes (+5 bullets each), six
 // defenders on posts drawn from the site's pool, two kits in its yard, and
 // one or two random captives (alternating per new mission) in random rooms.
 // Stages:
 //   ARRIVAL → EXPLORE → CLEAR_SITE → RESCUE → ESCORT → DSS_BOARDING →
 //   DSS_DEPARTURE → COMPLETED
-// Captives can be freed only when all six site defenders are down; the DSS
-// handover needs all ten hostiles down and every captive present. The van
+// Captives can be freed only when all site defenders are down; at DSS every
+// freed captive boards the van at once (roaming hostiles left don't block it). The van
 // leaves and, at its endpoint, the reward (5,000 RP per captive and
 // 2 Mission Points) is paid once per mission ID.
 //
@@ -154,11 +154,13 @@ export function createMission(ctx) {
       }
       return out;
     };
-    // Four roaming hostiles: beats near the way in, clear of the arrival.
+    // Seven roaming hostiles: beats near the way in, clear of the arrival.
     const beats = ROAM_BEATS.map((b) => ({ b, pos: beatPt(b, b.a), pos2: beatPt(b, b.b) }));
-    const roam = pick(beats, 4, (o) => corridor(o.pos),
+    const roam = pick(beats, RULES.roamers, (o) => corridor(o.pos),
       (o) => far(o.pos, arrival.x, arrival.z, 60) && far(o.pos2, arrival.x, arrival.z, 50) && far(o.pos, site.x, site.z, 60) && far(o.pos, dss.x, dss.z, 50), 45);
-    while (roam.length < 4) roam.push(beats[roam.length]);   // never fewer than four
+    // Never fewer than seven: the rest of the beats that are clear of the arrival, then any.
+    for (const o of shuffle(beats)) { if (roam.length >= RULES.roamers) break; if (!roam.includes(o) && far(o.pos, arrival.x, arrival.z, 40)) roam.push(o); }
+    for (const o of beats) { if (roam.length >= RULES.roamers) break; if (!roam.includes(o)) roam.push(o); }
     // Eight health kits outside the site, two inside.
     const pool = KIT_POOL.map((k) => ({ k, pos: spot(k) }));
     const kits = pick(pool, 8, (o) => corridor(o.pos) * 0.8,
@@ -177,10 +179,10 @@ export function createMission(ctx) {
       (o) => far(o.pos, arrival.x, arrival.z, 15) && far(o.pos, site.x, site.z, 55) && awayFromKits(o), 40);
     for (const o of shuffle(cratePool)) { if (crates.length >= RULES.ammoCrates) break; if (!crates.includes(o) && far(o.pos, site.x, site.z, site.r + 8)) crates.push(o); }
     const ammo = crates.map((o, i) => ({ id: `crate-${i + 1}`, kind: 'crate', x: o.pos[0], z: o.pos[1], yaw: r() * Math.PI * 2 }));
-    // Six defenders: the fixed posts, then random ones from the site's pool.
+    // Eight defenders: the fixed posts, then random ones from the site's pool.
     const posts = site.def.defenders;
-    const defenderPosts = [...posts.filter((d) => d[3] === 'fixed'), ...shuffle(posts.filter((d) => d[3] !== 'fixed'))].slice(0, 6);
-    // Roster by model index: 0-3 roam, 4-9 defend the site.
+    const defenderPosts = [...posts.filter((d) => d[3] === 'fixed'), ...shuffle(posts.filter((d) => d[3] !== 'fixed'))].slice(0, RULES.defenders);
+    // Roster by model index: the roamers first, then the site defenders.
     const roster = [
       ...roam.map((o, i) => ({ id: `roam-${i + 1}`, group: 'roam', post: [...o.pos, 0], patrol: [o.pos, o.pos2] })),
       ...defenderPosts.map(([x, z, yaw], i) => ({ id: `site-${i + 1}`, group: 'site', post: [...to([x, z]), yaw] })),
@@ -494,13 +496,11 @@ export function createMission(ctx) {
   }
 
   function tryHandover() {
-    const dss = ctx.getDss();
-    const n = left(hostiles.units);
-    if (n > 0) { showTip(`DSS will not take over while hostiles remain: ${n} left. The marker shows the nearest.`, 5); return; }
+    // Every captive must be free and with you (owner, 14 Oct: remaining
+    // roaming hostiles no longer block the handover).
     const want = captives.units.filter((c) => c.state === 'following');
-    const present = want.filter((c) => c.model.position.distanceTo(dss.pos) < DSS_AREA.radius + 8);
-    if (present.length < setup.captives.length) { showTip(`Captives at DSS: ${present.length} of ${setup.captives.length}. Bring everyone.`, 5); return; }
-    handover(present);
+    if (want.length < captives.units.length) { showTip(`Free every captive first: ${want.length} of ${captives.units.length} with you.`, 5); return; }
+    handover(want);
   }
 
   let lastCounts = '', lastFocus = null;
@@ -529,7 +529,7 @@ export function createMission(ctx) {
       case 'CLEAR_SITE': {
         const inside = Math.hypot(pp.x - site.x, pp.z - site.z) < site.r;
         const h = nearest(siteUnits().filter((u) => u.state !== 'down'), (u) => u.model.position);
-        return { text: `Clear the captive site: ${siteLeft} of 6 defenders left`, at: inside && h ? h.model.position : entrance(), what: inside && h ? 'Defender' : 'Captive site' };
+        return { text: `Clear the captive site: ${siteLeft} of ${RULES.defenders} defenders left`, at: inside && h ? h.model.position : entrance(), what: inside && h ? 'Defender' : 'Captive site' };
       }
       case 'RESCUE': {
         const freed = captives.units.filter((c) => c.state === 'following').length;
@@ -538,12 +538,7 @@ export function createMission(ctx) {
       }
       case 'ESCORT': {
         const d = dssPos();
-        if (atDss && roamLeft + siteLeft > 0) {
-          const h = nearest(hostiles.units.filter((u) => u.id && u.state !== 'down'), (u) => u.model.position);
-          return { text: `Defeat the remaining hostiles before the handover: ${roamLeft + siteLeft} left`, at: h?.model.position ?? null, what: 'Hostile' };
-        }
-        const extra = roamLeft ? ` · ${roamLeft} roaming hostile${roamLeft > 1 ? 's' : ''} remain` : '';
-        return { text: atDss ? `At DSS: hand over the captives${extra}` : `Escort the captives to DSS by the river, west of the savanna village${extra}`, at: d, what: 'DSS van' };
+        return { text: atDss ? 'At DSS: the captives board the van' : 'Escort the captives to DSS by the river, west of the savanna village', at: d, what: 'DSS van' };
       }
       case 'DSS_BOARDING': return { text: 'Captives boarding the DSS van…', at: null };
       case 'DSS_DEPARTURE': return { text: 'The DSS van is leaving with the captives…', at: null };
@@ -599,6 +594,8 @@ export function createMission(ctx) {
     const dss = dssPos();
     const near = Math.hypot(pp.x - dss.x, pp.z - dss.z) < DSS_AREA.radius;
     if (stage === 'ESCORT' && near && !atDss) { atDss = true; checkpoint(); }
+    // At DSS with every captive: they board the van straight away (no button needed).
+    if (stage === 'ESCORT' && atDss && captives.units.length && captives.units.every((c) => c.state === 'following')) tryHandover();
     if (!near && stage === 'ESCORT') atDss = false;
     if (saveTimer > 20 && !hostiles.units.some((u) => u.state === 'alert' && u.model.position.distanceTo(pp) < 45)) checkpoint();
 
@@ -608,24 +605,25 @@ export function createMission(ctx) {
     waypoint(o.at, o.what);
     // Icon counters (owner, 14 Oct: no sentence, just icons and numbers).
     const total = left(hostiles.units), sl = left(siteUnits());
+    const allH = setup.roster.length, allS = setup.roster.filter((r) => r.group === 'site').length;
     const kitsGot = 8 - setup.kits.filter((k) => k.id.startsWith('kit-') && !k.id.startsWith('kit-in') && !collected.has(k.id)).length;
     const freed = captives.units.filter((c) => ['following', 'boarding', 'boarded', 'departed'].includes(c.state)).length;
     const crateList = setup.ammo.filter((a) => a.kind === 'crate');
     const cratesGot = crateList.filter((a) => collected.has(a.id)).length;
-    const counts = `${cratesGot}/${crateList.length}|${kitsGot}/8|${total}/10|${sl}/6|${freed}/${setup.captives.length}|${grenades.count}`;
+    const counts = `${cratesGot}/${crateList.length}|${kitsGot}/8|${total}/${allH}|${sl}/${allS}|${freed}/${setup.captives.length}|${grenades.count}`;
     if (counts !== lastCounts) {
       lastCounts = counts;
       ui.cKits.textContent = `${kitsGot}/8`;
       ui.cCrates.textContent = `${cratesGot}/${crateList.length}`;
       ui.cCrates.parentElement.hidden = !crateList.length;
-      ui.cHostiles.textContent = `${total}/10`;
-      ui.cSite.textContent = `${sl}/6`;
+      ui.cHostiles.textContent = `${total}/${allH}`;
+      ui.cSite.textContent = `${sl}/${allS}`;
       ui.cCaptives.textContent = `${freed}/${setup.captives.length}`;
       ui.cGrenades.textContent = grenades.count;
       ui.cGrenades.parentElement.hidden = !grenades.count;
     }
     // The stage's own counter glows.
-    const focus = { EXPLORE: 'kits', CLEAR_SITE: 'site', RESCUE: 'captives' }[stage] ?? (stage === 'ESCORT' && total ? 'hostiles' : '');
+    const focus = { EXPLORE: 'kits', CLEAR_SITE: 'site', RESCUE: 'captives' }[stage] ?? (stage === 'ESCORT' ? 'captives' : '');
     if (focus !== lastFocus) {
       lastFocus = focus;
       for (const k of ['kits', 'hostiles', 'site', 'captives']) ui.counts.querySelector(`.c-${k}`).classList.toggle('focus', k === focus);

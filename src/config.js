@@ -21,7 +21,9 @@ export const RULES = {
   ammoCrates: 4,
   rpPerCaptive: 5000,
   missionPoints: 2,
-  maxGrenades: 3,          // equipped per mission
+  maxGrenades: 3,
+  roamers: 7,              // hostiles: 7 roaming + 8 at the site = 15 (owner, 14 Oct)
+  defenders: 8,          // equipped per mission
   prices: { bike: 20000, truck: 60000, parachute: 15000, glider: 30000, grenade: 1000 },
 };
 

@@ -4,7 +4,7 @@
 // Bound captives sit and call "Help!" when the player is near; the mission
 // frees them (Interact) once the site is clear. Followers walk the player's
 // own path (a breadcrumb trail), so they use the same doors and bridges;
-// they crouch and wait while hostiles are fighting nearby, can't be hurt,
+// they sit down low and wait while hostiles are fighting nearby, can't be hurt,
 // and if one falls far behind out of danger they catch up on the trail.
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -207,14 +207,20 @@ export function createCaptives(scene, { heightAt, onDiscover }) {
     for (const u of units) {
       if (!u.model.visible) continue;
       const s = u.speed;
-      const runW = THREE.MathUtils.clamp((s - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1);
+      // The run clip only half-blended over a sped-up walk: its full high-knee
+      // stride tore the loose trousers and dresses (owner, 14 Oct).
+      const runW = THREE.MathUtils.clamp((s - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1) * 0.45;
       const walkW = THREE.MathUtils.clamp(s / WALK_SPEED, 0, 1) * (1 - runW);
+      u.actions.walk.timeScale = THREE.MathUtils.clamp(s / WALK_SPEED, 1, 1.9);
       u.sitW = THREE.MathUtils.damp(u.sitW, u.state === 'bound' || u.state === 'discovered' ? 1 : 0, 5, dt);
       u.crouchW = THREE.MathUtils.damp(u.crouchW, u.cover > 0 ? 1 : 0, 6, dt);
       const standW = Math.max(0, 1 - walkW - runW);
-      u.actions.sit.setEffectiveWeight(standW * u.sitW);
-      u.actions.crouch.setEffectiveWeight(standW * (1 - u.sitW) * u.crouchW);
-      u.actions.idle.setEffectiveWeight(standW * (1 - u.sitW) * (1 - u.crouchW));
+      // Taking cover: they sit down low (the soldiers' crouch clip stretched
+      // the captives' clothes into odd shapes, owner 14 Oct).
+      const lowW = Math.max(u.sitW, u.crouchW);
+      u.actions.sit.setEffectiveWeight(standW * lowW);
+      u.actions.crouch.setEffectiveWeight(0);
+      u.actions.idle.setEffectiveWeight(standW * (1 - lowW));
       u.actions.walk.setEffectiveWeight(walkW);
       u.actions.run.setEffectiveWeight(runW);
       u.mixer.update(dt);

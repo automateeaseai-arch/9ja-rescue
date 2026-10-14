@@ -1,6 +1,7 @@
-// Hostiles: exactly ten per mission (game plan v2.2). The mission gives each
-// a place with `configure(roster)`: four roam patrol beats between the arrival
-// and the captive site, six defend the site (one inside the store house).
+// Hostiles: fifteen per mission (owner, 14 Oct; the plan had ten). The mission
+// gives each a place with `configure(roster)`: seven roam patrol beats between
+// the arrival and the captive site, eight defend the site. The ten character
+// models are shared (models 11-15 are copies of 1-5).
 // Every hostile has 10 HP; each hit on the player does 20 HP. At most two
 // fire at once, so a group can't drop the player in an instant. Site
 // defenders give up a chase that leads too far from the site.
@@ -81,9 +82,12 @@ export function spawnHostiles(scene, opts = {}) {
 
   (async () => {
     const shared = await loadSharedAnims();
-    for (let i = 0; i < HOSTILES.length; i++) {
+    const files = new Map();
+    for (let i = 0; i < RULES.roamers + RULES.defenders; i++) {
       try {
-        const gltf = await loadGlb(HOSTILES[i].url);
+        const def = HOSTILES[i % HOSTILES.length];
+        if (!files.has(def.url)) files.set(def.url, await loadGlb(def.url));
+        const gltf = files.get(def.url);
         const model = cloneSkinned(gltf.scene);
         model.rotation.order = 'YXZ'; // so the fall tilts in the model's own frame
         model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
@@ -118,7 +122,7 @@ export function spawnHostiles(scene, opts = {}) {
         scene.add(mark);
 
         const u = {
-          index: i, name: HOSTILES[i].name, model, mixer, a, hand, body: null, collider: null, mark,
+          index: i, name: def.name, model, mixer, a, hand, body: null, collider: null, mark,
           post: new THREE.Vector3(x, y, z), postYaw: yaw, phase: i * 1.7,
           health: MAX_HEALTH, state: 'guard', awareness: 0, lastSeen: new THREE.Vector3(),
           sinceSeen: 99, seen: false, losTimer: i * 0.02, burst: 0, shotTimer: 1 + i * 0.13,
