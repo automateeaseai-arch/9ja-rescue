@@ -38,6 +38,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
   const O = new THREE.Vector3(), D = new THREE.Vector3(), P = new THREE.Vector3(), Q = new THREE.Vector3();
   const muzzle = new THREE.Vector3(), end = new THREE.Vector3();
+  let lastFire = false;
   const assist = isTouch ? 0.12 : 0.05; // radians of aim help (more on phones)
 
   // Body sample points (height above feet, radius): legs, torso, chest, head.
@@ -148,9 +149,19 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
       }
     }
     const firing = input ? input.state.fire : player.state.aiming;
+    // A tap on Fire always fires a full round (owner, 14 Oct: quick phone taps
+    // used to end before the rifle came up, so nothing fired). The tap is
+    // remembered for 0.6 s, the rifle stays up until the round is done, and
+    // letting go mid-round no longer cuts it short.
+    if (firing && !lastFire && (input?.state.weapon ?? 'gun') === 'gun') st.pending = 0.6;
+    lastFire = firing;
+    st.pending = Math.max(0, (st.pending ?? 0) - dt);
+    player.state.holdAim = st.pending > 0 || st.burstLeft > 0;
+    const wants = firing || st.pending > 0 || st.burstLeft > 0;
     st.cooldown -= dt;
-    if (st.burstLeft > 0 && !(firing && player.state.aiming)) { st.burstLeft = 0; st.cooldown = BURST_GAP; }
-    if (firing && player.state.aiming && player.aimWeight > 0.7 && st.cooldown <= 0 && st.reload <= 0) {
+    if (st.burstLeft > 0 && !player.state.aiming) { st.burstLeft = 0; st.cooldown = BURST_GAP; }
+    if (wants && player.state.aiming && player.aimWeight > 0.35 && st.cooldown <= 0 && st.reload <= 0) {
+      st.pending = 0;
       if (st.mag <= 0) startReload();   // empty: reload automatically
       else {
         if (st.burstLeft <= 0) st.burstLeft = BURST;
