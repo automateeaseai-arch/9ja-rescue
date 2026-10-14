@@ -9,7 +9,8 @@
 // Stages:
 //   ARRIVAL → EXPLORE → CLEAR_SITE → RESCUE → ESCORT → DSS_BOARDING →
 //   DSS_DEPARTURE → COMPLETED
-// Captives can be freed only when all site defenders are down; at DSS every
+// Captives can be freed only when every hostile is down (site defenders
+// first, then the arrow hunts the roamers); at DSS every
 // freed captive boards the van at once (roaming hostiles left don't block it). The van
 // leaves and, at its endpoint, the reward (5,000 RP per captive and
 // 2 Mission Points) is paid once per mission ID.
@@ -267,6 +268,7 @@ export function createMission(ctx) {
     prog(0.5, 'Placing hostiles and supplies');
     useSite(setup.site ?? 'compound');   // older saves: the compound
     stage = state.stage;
+    siteCleared = false;
     reachedSite = state.reachedSite;
     atDss = state.atDss;
     collected = new Set(state.pickups);
@@ -475,8 +477,8 @@ export function createMission(ctx) {
     if (vehicles.driving) return { label: 'Get out', enabled: true, run: () => { driveRequest = true; } };
     for (const c of captives.units) {
       if (!['bound', 'discovered'].includes(c.state) || c.model.position.distanceTo(pp) > 2.6) continue;
-      const n = left(siteUnits());
-      if (n > 0) return { label: `Clear the captive site first (${n} left)`, enabled: false };
+      const n = left(hostiles.units);
+      if (n > 0) return { label: `Defeat every hostile first (${n} left)`, enabled: false };
       return {
         label: `Free ${c.name}`, enabled: true,
         run: () => {
@@ -503,7 +505,7 @@ export function createMission(ctx) {
     handover(want);
   }
 
-  let lastCounts = '', lastFocus = null;
+  let lastCounts = '', lastFocus = null, siteCleared = false;
   let driveRequest = false;
   function takeDriveRequest() { const d = driveRequest; driveRequest = false; return d; }
 
@@ -529,7 +531,10 @@ export function createMission(ctx) {
       case 'CLEAR_SITE': {
         const inside = Math.hypot(pp.x - site.x, pp.z - site.z) < site.r;
         const h = nearest(siteUnits().filter((u) => u.state !== 'down'), (u) => u.model.position);
-        return { text: `Clear the captive site: ${siteLeft} of ${RULES.defenders} defenders left`, at: inside && h ? h.model.position : entrance(), what: inside && h ? 'Defender' : 'Captive site' };
+        if (siteLeft > 0) return { text: `Clear the captive site: ${siteLeft} defenders left`, at: inside && h ? h.model.position : entrance(), what: inside && h ? 'Defender' : 'Captive site' };
+        // Site clear: hunt down the roaming hostiles before the rescue (owner, 14 Oct).
+        const r = nearest(hostiles.units.filter((u) => u.id && u.state !== 'down'), (u) => u.model.position);
+        return { text: `Defeat the remaining hostiles: ${roamLeft} left`, at: r?.model.position ?? null, what: 'Hostile' };
       }
       case 'RESCUE': {
         const freed = captives.units.filter((c) => c.state === 'following').length;
@@ -585,7 +590,14 @@ export function createMission(ctx) {
     if (stage === 'ARRIVAL' && !airdrop.active && player.state.mode !== 'drive') arrive();
     if (!reachedSite && Math.hypot(pp.x - site.x, pp.z - site.z) < site.r + 20) { reachedSite = true; checkpoint(); }
     if (stage === 'EXPLORE' && reachedSite) stage = 'CLEAR_SITE';
-    if (stage === 'CLEAR_SITE' && left(siteUnits()) === 0) { stage = 'RESCUE'; sound.play('success', { volume: 0.5 }); showTip('Site clear. Find and free the captives.', 4); checkpoint(); }
+    // Every hostile (site and roaming) must be down before the rescue (owner, 14 Oct).
+    // (A mission saved under the old rule may be in RESCUE with roamers left: back to clearing.)
+    if (stage === 'RESCUE' && left(hostiles.units) > 0 && captives.units.some((c) => ['bound', 'discovered'].includes(c.state))) stage = 'CLEAR_SITE';
+    if (stage === 'CLEAR_SITE' && !siteCleared && left(siteUnits()) === 0 && left(hostiles.units) > 0) {
+      siteCleared = true; sound.play('success', { volume: 0.4 });
+      showTip(`Site clear. Now defeat the roaming hostiles: ${left(hostiles.units)} left. The arrow shows the nearest.`, 5); checkpoint();
+    }
+    if (stage === 'CLEAR_SITE' && left(hostiles.units) === 0) { stage = 'RESCUE'; sound.play('success', { volume: 0.5 }); showTip('All hostiles defeated. Find and free the captives.', 4); checkpoint(); }
     if (stage === 'RESCUE' && captives.units.length && captives.units.every((c) => c.state === 'following')) {
       stage = 'ESCORT';
       showTip('Escort the captives to DSS. They follow your path: use the bridges.', 5);
@@ -623,7 +635,7 @@ export function createMission(ctx) {
       ui.cGrenades.parentElement.hidden = !grenades.count;
     }
     // The stage's own counter glows.
-    const focus = { EXPLORE: 'kits', CLEAR_SITE: 'site', RESCUE: 'captives' }[stage] ?? (stage === 'ESCORT' ? 'captives' : '');
+    const focus = { EXPLORE: 'kits', CLEAR_SITE: sl > 0 ? 'site' : 'hostiles', RESCUE: 'captives' }[stage] ?? (stage === 'ESCORT' ? 'captives' : '');
     if (focus !== lastFocus) {
       lastFocus = focus;
       for (const k of ['kits', 'hostiles', 'site', 'captives']) ui.counts.querySelector(`.c-${k}`).classList.toggle('focus', k === focus);
