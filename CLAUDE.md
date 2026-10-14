@@ -12,7 +12,7 @@ Landscape, third-person 3D rescue game for **mobile web browsers** (fictional Ni
 
 ## Where things live
 - Playable link (private claude.ai artifact; republish to the same URL): https://claude.ai/artifact/2a5tDXarnH6abmbXxjHrzP (device-only accounts)
-- Web version with Firebase accounts: https://automateeaseai-arch.github.io/9ja-rescue/ (GitHub Pages from the `gh-pages` branch, owner approved 14 Oct). Deploy with `tools/deploy-pages.sh` after each change (it replaces the branch with the new build). The container can't open github.io, so test the same build locally under `/9ja-rescue/`.
+- Web version with Firebase accounts: **https://9jarescue.app** (owner's domain from Namecheap, bought 14 Oct; renews about $18/yr) served by GitHub Pages from the `gh-pages` branch (owner approved 14 Oct); the old https://automateeaseai-arch.github.io/9ja-rescue/ forwards to it. DNS at Namecheap: 4 A records @ → 185.199.108–111.153, CNAME www → automateeaseai-arch.github.io. `CNAME` file written by the deploy script. Firebase authorized domains must include 9jarescue.app. Deploy with `tools/deploy-pages.sh` after each change (it replaces the branch with the new build). The container can't open github.io, so test the same build locally under `/9ja-rescue/`.
 - Branch: `ccr-8667c989-hiwgos` on `automateeaseai-arch/9ja-rescue`
 - Meshy API: `https://api.meshy.ai` (the proxy injects the key; check balance with `GET /openapi/v1/balance`). Credits reset monthly around **13 November 2026**. **Balance (14 Oct, after the jump and riding clips): 315 credits.** Environment budget agreed by the owner: 700 ceiling, 660 used (`docs/river-valley.md` has the ledger).
 
