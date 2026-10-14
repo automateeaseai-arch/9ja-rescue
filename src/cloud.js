@@ -9,7 +9,7 @@
 import { RECORDS, readRaw, writeRaw, stamps, setOnChange, currentUser } from './save.js';
 
 const PUSH_DELAY = 2500;   // ms after the last save
-let fs = null;             // { db, doc, getDoc, setDoc }
+let fs = null;             // Firestore Lite functions and the database
 let dirty = new Set();
 let timer = null;
 let pushing = null;
@@ -28,7 +28,7 @@ async function push() {
   const data = { updated: Date.now() };
   for (const n of names) data[n] = { text: readRaw(n), at: st[n] ?? 0 };
   pushing = withTimeout(fs.setDoc(docFor(uid), data, { merge: true }), 15000)
-    .then(() => { state = 'synced'; })
+    .then(() => { state = 'synced'; if (names.includes('account') || names.includes('characters')) publishRank(uid); })
     .catch((e) => {
       console.warn('online save failed, will retry', e?.code || e?.message);
       names.forEach((n) => dirty.add(n));
@@ -39,6 +39,21 @@ async function push() {
     .finally(() => { pushing = null; if (dirty.size && state === 'synced') schedule(); });
   return pushing;
 }
+// Rankings (game plan: players compared by Mission Points): a small public
+// entry per player in rankings/{uid}, with the active character's name (never
+// the email). Only players who have completed a mission are listed.
+function publishRank(uid) {
+  let a = null, chars = [];
+  try { a = JSON.parse(readRaw('account')); chars = JSON.parse(readRaw('characters')) || []; } catch { return; }
+  if (!a || !(a.missionsCompleted > 0)) return;
+  const c = chars.find((x) => x.id === a.activeCharacter) ?? chars[0];
+  const entry = {
+    name: String(c?.name || 'Rescuer').slice(0, 24), mp: a.missionPoints | 0,
+    missions: a.missionsCompleted | 0, captives: a.captivesRescued | 0, updated: Date.now(),
+  };
+  fs.setDoc(fs.doc(fs.db, 'rankings', uid), entry).catch((e) => console.warn('ranking not saved', e?.code || e?.message));
+}
+
 function schedule() {
   clearTimeout(timer);
   timer = setTimeout(push, PUSH_DELAY);
@@ -52,7 +67,7 @@ export const cloud = {
   async init(app) {
     if (!app || fs) return;
     const m = await import('firebase/firestore/lite');
-    fs = { db: m.getFirestore(app), doc: m.doc, getDoc: m.getDoc, setDoc: m.setDoc };
+    fs = { db: m.getFirestore(app), ...m };
     setOnChange((name) => { if (fs) { dirty.add(name); schedule(); } });
     const flush = () => { if (dirty.size) push(); };
     addEventListener('pagehide', flush);
@@ -89,6 +104,26 @@ export const cloud = {
     if (dirty.size) await push();
     return state;
   },
+
+  // The top players by Mission Points, and this player's own entry.
+  async rankings(n = 50) {
+    if (!fs) throw new Error('offline-copy');
+    const q = fs.query(fs.collection(fs.db, 'rankings'), fs.orderBy('mp', 'desc'), fs.limit(n));
+    const snap = await withTimeout(fs.getDocs(q), 12000);
+    const list = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+    const uid = currentUser();
+    let me = list.find((r) => r.uid === uid) ?? null;
+    if (!me && uid) {
+      const mine = await fs.getDoc(fs.doc(fs.db, 'rankings', uid)).catch(() => null);
+      if (mine?.exists()) {
+        me = { uid, ...mine.data() };
+        const above = await (fs.getCount ?? fs.getCountFromServer)(fs.query(fs.collection(fs.db, 'rankings'), fs.where('mp', '>', me.mp))).catch(() => null);
+        me.rank = above ? above.data().count + 1 : null;
+      }
+    }
+    return { list, me };
+  },
+  publishRank() { const uid = currentUser(); if (fs && uid) publishRank(uid); },
 
   // For tests: read or delete a player record directly.
   async _get(id) { return (await fs.getDoc(docFor(id))).data(); },

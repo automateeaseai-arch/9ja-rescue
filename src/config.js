@@ -32,6 +32,9 @@ export const AI = {
   reaction: 0.6,           // seconds from alert to the first shot
   searchTime: 8,           // seconds without sight before giving up
   alertRadius: 12,         // a hit alerts hostiles this close
+  hearShot: 45,            // the player's gunshots are heard this far (m)
+  hearAlert: 18,           // closer than this, a guard knows where the shot came from
+  investigateTime: 12,     // seconds a guard searches around a heard shot
   siteLeash: 75,           // site defenders give up chasing this far from the site
   walk: 1.6, run: 4.0,
 };

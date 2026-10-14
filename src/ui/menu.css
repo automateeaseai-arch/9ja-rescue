@@ -23,7 +23,7 @@ html { font-size: clamp(11px, calc(min(100vh, 46.2vw) / 26.5), 22px); }
   --m-safe-b: max(0.8rem, env(safe-area-inset-bottom));
 }
 
-body.in-menu > :not(#menu):not(#rotate):not(script) { display: none !important; }
+body.in-menu > :not(#menu):not(#rotate):not(#settings):not(script) { display: none !important; }
 body:not(.in-menu) #menu { display: none; }
 body.in-menu { touch-action: manipulation; }
 
@@ -339,3 +339,10 @@ body.in-menu { touch-action: manipulation; }
 .m-btn.google .g-mark { width: 1.25rem; height: 1.25rem; flex: none; }
 .m-or { display: flex; align-items: center; gap: .6rem; margin: .55rem 0; color: rgba(240,240,230,.75); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
 .m-or::before, .m-or::after { content: ""; flex: 1; height: 1px; background: rgba(240,240,230,.3); }
+/* Rankings table */
+.m-rank-wrap { max-height: 55vh; overflow: auto; margin: .4rem 0 .8rem; }
+.m-rank { width: 100%; border-collapse: collapse; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.m-rank th { text-align: left; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; opacity: .75; padding: .3rem .4rem; position: sticky; top: 0; background: rgba(9,24,17,.95); }
+.m-rank td { padding: .35rem .4rem; border-top: 1px solid rgba(240,240,230,.12); }
+.m-rank td:nth-child(n+3), .m-rank th:nth-child(n+3) { text-align: right; }
+.m-rank tr.me td { background: rgba(240,183,51,.18); font-weight: 700; }

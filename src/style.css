@@ -156,3 +156,29 @@ body:not(.touch) #weapons { bottom: 10px; left: 16px; transform: none; }
 .panel details { text-align: left; }
 .panel summary { cursor: pointer; font-size: 13px; opacity: 0.85; padding: 4px 0; }
 #results-body { display: grid; gap: 6px; font-size: 15px; }
+
+/* Settings panel (Home and pause). */
+#settings { z-index: 40; }
+#settings .panel { max-height: calc(100vh - 24px); overflow-y: auto; width: min(92vw, 460px); gap: 10px; }
+.set-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; text-align: left; }
+.set-row > span { font-weight: 700; min-width: 7.5em; }
+.set-row.col { flex-direction: column; align-items: stretch; }
+.set-row.col .row { justify-content: flex-start; }
+.set-row input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.set-row b { font-variant-numeric: tabular-nums; min-width: 3em; }
+.panel button.gold { background: var(--accent); color: #1b1410; font-weight: 800; }
+
+/* Button size (Settings). */
+body[data-buttons=small] :is(.touch-ctrl, #interact-btn, #ammo, #weapons) { zoom: 0.85; }
+body[data-buttons=large] :is(.touch-ctrl, #interact-btn, #ammo, #weapons) { zoom: 1.2; }
+
+/* Left-handed layout (Settings): the button cluster moves to the left. */
+.lefty #fire-btn { right: auto; left: max(18px, env(safe-area-inset-left)); }
+.lefty #jump-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 12px); }
+.lefty #aim-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 98px); }
+.lefty #crouch-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 98px); }
+.lefty #throw-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 90px); }
+.lefty #reload-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 168px); }
+.lefty.touch #ammo { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 160px); }
+.lefty.touch #interact-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 236px); }
+.lefty.touch #weapons { left: 62%; }

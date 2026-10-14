@@ -13,7 +13,8 @@
 // alerted they chase, stop with a clear shot and fire rounds of 3 bullets
 // 0.4 s apart; if they lose
 // the player they search the last place they saw them, then go back to their
-// post. When a guard is hit, every guard within 12 m is alerted at once and
+// post. Gunshots are heard up to 45 m: within 18 m the guard attacks, further
+// away they come to look. When a guard is hit, every guard within 12 m is alerted at once and
 // attacks too. Knocked-out guards play Meshy's knock-down (hit from the
 // front) or fall-forward (from behind) clip. Each has a capsule collider and walks with a character controller,
 // so they can't pass through walls, rocks or the player.
@@ -221,6 +222,23 @@ export function spawnHostiles(scene, opts = {}) {
     u.lastSeen.copy(playerPos);
   }
 
+  const left0 = (u) => Math.hypot(u.heard.x - u.model.position.x, u.heard.z - u.model.position.z);
+
+  // A gunshot at `pos`: guards close by know where it came from and attack;
+  // further away they come to look (and attack if they see the player).
+  function hear(pos, radius = AI.hearShot) {
+    for (const u of units) {
+      if (u.state === 'down' || u.state === 'alert' || !u.body) continue;
+      const d = u.model.position.distanceTo(pos);
+      if (d > radius) continue;
+      if (d < AI.hearAlert) { alert(u, pos); continue; }
+      u.state = 'investigate';
+      u.heard = (u.heard ?? new THREE.Vector3()).set(pos.x + (Math.random() - 0.5) * 6, pos.y, pos.z + (Math.random() - 0.5) * 6);
+      u.investigate = AI.investigateTime;
+      u.awareness = Math.max(u.awareness, 0.5);
+    }
+  }
+
   // Every other guard close by hears it and comes for the player.
   function alertNearby(u, playerPos) {
     for (const o of units) {
@@ -382,6 +400,15 @@ export function spawnHostiles(scene, opts = {}) {
         if (u.group === 'site' && opts.site && Math.hypot(u.model.position.x - opts.site.x, u.model.position.z - opts.site.z) > AI.siteLeash) {
           u.state = 'return'; u.awareness = 0.4;
         }
+      } else if (u.state === 'investigate') {
+        // Heard a shot: walk briskly to where it came from and look around.
+        u.awareness = Math.max(u.awareness, 0.35);
+        u.investigate -= dt;
+        const left = moveTowards(u, u.heard.x, u.heard.z, left0(u) > 2 ? (WALK + RUN) / 2 : 0, dt);
+        speed = left > 2 ? (WALK + RUN) / 2 : 0;
+        if (speed === 0) u.model.rotation.y += Math.sin(performance.now() / 600 + u.phase) * dt * 1.4;
+        const far = u.group === 'site' && opts.site && Math.hypot(u.model.position.x - opts.site.x, u.model.position.z - opts.site.z) > AI.siteLeash;
+        if (u.investigate <= 0 || far) { u.state = 'return'; u.awareness = 0.2; }
       } else if (u.state === 'return') {
         speed = WALK;
         if (moveTowards(u, u.post.x, u.post.z, speed, dt) < 0.4) { u.state = 'guard'; speed = 0; }
@@ -451,6 +478,7 @@ export function spawnHostiles(scene, opts = {}) {
       alertNearby(u, playerPos);
     },
     alertTo: (u, playerPos) => alert(u, playerPos),
+    hear,
     knockOut,
     // A takedown works on a guard who hasn't noticed the player and is
     // facing away (the player is outside their view cone).

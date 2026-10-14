@@ -17,7 +17,7 @@ const FILES = {
 const STEPS = [0.0, 0.388, 0.76, 1.2, 1.635, 2.026, 2.434, 2.848, 3.23, 3.637, 4.01, 4.45];
 const MUTE_KEY = '9ja.muted.v1';
 
-let ctx = null, master = null, game = null, muted = false, active = false;
+let ctx = null, master = null, game = null, muted = false, active = false, volume = 1;
 const buffers = {};
 const loading = {};
 const stats = {};   // plays per sound, for the test hooks
@@ -29,7 +29,7 @@ function unlock() {
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 1;
+    master.gain.value = muted ? 0 : volume;
     master.connect(ctx.destination);
     // Game sounds go through their own gain, silenced in menus and on pause.
     game = ctx.createGain();
@@ -71,10 +71,15 @@ export const sound = {
     if (game) game.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.08);
   },
   get muted() { return muted; },
+  // Overall volume 0..1 (Settings).
+  setVolume(v) {
+    volume = Math.max(0, Math.min(1, v));
+    if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
+  },
   setMuted(m) {
     muted = !!m;
     try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* ignore */ }
-    if (master) master.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);
+    if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
   },
   // Fetch the game's sounds (the menu ones are fetched on first use).
   preload(names = Object.keys(FILES)) {

@@ -6,6 +6,7 @@ import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { createFx } from './fx.js';
 import { sound } from './sound.js';
+import { settings } from './settings.js';
 import { createAmbience } from './ambience.js';
 import { createCombat } from './combat.js';
 import { createPickups } from './pickups.js';
@@ -206,6 +207,7 @@ async function start() {
   });
 
   // Sound on/off in the pause menu (the same switch as on the Home screen).
+  document.getElementById('pause-settings').addEventListener('click', () => settings.open(soundLabel));
   const soundBtn = document.getElementById('pause-sound');
   const soundLabel = () => { soundBtn.textContent = sound.muted ? 'Sound: off' : 'Sound: on'; };
   soundBtn.addEventListener('click', () => { sound.setMuted(!sound.muted); soundLabel(); if (!sound.muted) sound.ui('select'); });
@@ -305,8 +307,8 @@ async function start() {
     const look = input.consumeLook();
     // Finer turning while aiming, so small adjustments are easy.
     const fine = player.state.aiming ? 0.55 : 1;
-    yaw -= look.x * 0.004 * fine;
-    pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003 * fine, -0.5, 1.1);
+    yaw -= look.x * 0.004 * fine * lookSpeed;
+    pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003 * fine * lookSpeed, -0.5, 1.1);
     if (!vehicles.driving && !airdrop.active) updateAim(look, dt);
 
     const car = vehicles.driving;
@@ -382,6 +384,16 @@ async function start() {
   }
   addEventListener('resize', resize);
   resize();
+
+  // Settings: graphics quality (resolution and shadows) and camera speed.
+  let lookSpeed = 1;
+  settings.onChange((st) => {
+    const ratio = { low: isPhone ? 0.85 : 1, medium: isPhone ? 1.25 : 2, high: 2 }[st.graphics] ?? 1.25;
+    renderer.setPixelRatio(Math.min(devicePixelRatio, ratio));
+    sun.castShadow = st.graphics !== 'low';
+    resize();
+    lookSpeed = st.sensitivity;
+  });
 
   const clock = new THREE.Clock();
   const FIXED = 1 / 60;

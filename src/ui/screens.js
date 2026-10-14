@@ -19,6 +19,8 @@ import { RULES, ARRIVALS } from '../config.js';
 import { PERSONAS } from '../hostages.js';
 import { sound } from '../sound.js';
 import { cloud } from '../cloud.js';
+import { settings as gameSettings } from '../settings.js';
+const openSettings = (cb) => gameSettings.open(cb);
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Number(n || 0).toLocaleString('en-GB');
@@ -714,9 +716,30 @@ export function createScreens() {
       show('13', { kind: 'start' });
     },
     abandonNew() { S.game.mission.abandon(); S.setup = null; closeSheet(); show('05', { mode: 'mission' }); },
-    rankings() {
-      sheet(`<h2 class="m-title">Rankings</h2><p>Rankings compare Mission Points between players. They need an online server, which is not connected yet, so there is no real leaderboard to show.</p>
-        <div class="m-stats"><span>Your Mission Points</span><b>${fmt(account().missionPoints)}</b></div><div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
+    async rankings() {
+      if (!cloud.enabled) {
+        sheet(`<h2 class="m-title">Rankings</h2><p>Rankings compare Mission Points between players online. This copy of the game plays offline, so open the online version to see them.</p>
+          <div class="m-stats"><span>Your Mission Points</span><b>${fmt(account().missionPoints)}</b></div><div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
+        return;
+      }
+      sheet('<h2 class="m-title">Rankings</h2><p class="m-sub">Loading…</p>');
+      cloud.publishRank();
+      let r;
+      try { r = await cloud.rankings(50); } catch (e) {
+        console.warn(e);
+        sheet(`<h2 class="m-title">Rankings</h2><p>Rankings could not be loaded. Check your connection and try again.</p><div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
+        return;
+      }
+      if (!$('.m-sheet')) return;   // closed while loading
+      const uid = S.user?.uid;
+      const rows = r.list.map((p, i) => `<tr class="${p.uid === uid ? 'me' : ''}"><td>${i + 1}</td><td>${esc(p.name)}</td><td>${fmt(p.mp)}</td><td>${fmt(p.captives)}</td><td>${fmt(p.missions)}</td></tr>`).join('');
+      const mine = r.me && !r.list.some((p) => p.uid === uid)
+        ? `<tr class="me"><td>${r.me.rank ?? '–'}</td><td>${esc(r.me.name)}</td><td>${fmt(r.me.mp)}</td><td>${fmt(r.me.captives)}</td><td>${fmt(r.me.missions)}</td></tr>` : '';
+      sheet(`<h2 class="m-title">Rankings</h2><p class="m-sub">Players by Mission Points. Complete a mission to join.</p>
+        ${rows || mine ? `<div class="m-rank-wrap"><table class="m-rank"><thead><tr><th>#</th><th>Player</th><th>MP</th><th>Rescued</th><th>Missions</th></tr></thead><tbody>${rows}${mine}</tbody></table></div>`
+          : '<p>No one has completed a mission yet. Be the first!</p>'}
+        ${r.me ? '' : `<p class="m-sub">You'll appear here after your first completed mission.</p>`}
+        <div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
     },
     profile() {
       const a = account();
@@ -726,15 +749,11 @@ export function createScreens() {
         <span>Characters</span><b>${Chars.list().length} of ${Chars.SLOTS}</b></div>
         <div class="row">${btn('Sign out', 'signOut', { kind: 'outline' })}${btn('Close', 'closeSheet')}</div>`);
     },
-    settings() {
-      sheet(`<h2 class="m-title">Settings</h2><div class="row">${btn(sound.muted ? 'Sound: off' : 'Sound: on', 'mute', { kind: 'outline', icon: sound.muted ? I.soundOff : I.soundOn })}</div><p>The other settings are not built yet. Planned (game plan): graphics, sensitivity, aim assist, button size and position, left-handed layout, vibration, subtitles, brightness and reduced motion.</p>
-        <div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
-    },
+    settings() { openSettings(() => { if (S.id === '04') rerender(); }); },
     mute() {
       sound.setMuted(!sound.muted);
       if (!sound.muted) sound.ui('select');
-      if ($('.m-sheet')) actions.settings();
-      else rerender();
+      rerender();
     },
     async signOut() { await cloud.flush().catch(() => {}); auth.signOut(); setUser(null); S.user = null; S.setup = null; closeSheet(); show('03A', { notice: 'Signed out.' }); },
 

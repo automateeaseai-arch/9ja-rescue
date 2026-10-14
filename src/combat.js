@@ -81,6 +81,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
     fx.flash(muzzle);
     fx.tracer(muzzle, end);
     fx.gunshot(0);
+    hostiles.hear?.(player.position);
     if (best) {
       st.hits++;
       hostiles.hit(best, part === 'head' ? HEAD_DAMAGE : SHOT_DAMAGE, player.position);

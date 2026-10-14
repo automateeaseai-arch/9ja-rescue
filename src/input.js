@@ -73,7 +73,8 @@ export function createInput(canvas) {
     }
   });
 
-  // Touch: left half spawns a floating joystick, right half swipes the camera.
+  // Touch: left half spawns a floating joystick, right half swipes the camera
+  // (the other way round with the left-handed layout).
   const joy = document.getElementById('joystick');
   const knob = document.getElementById('joystick-knob');
   const jumpBtn = document.getElementById('jump-btn');
@@ -83,7 +84,9 @@ export function createInput(canvas) {
 
   canvas.addEventListener('touchstart', (e) => {
     for (const t of e.changedTouches) {
-      if (t.clientX < innerWidth / 2 && joyId === null) {
+      // Left-handed layout (Settings): the joystick side is the right half.
+      const joySide = document.body.classList.contains('lefty') ? t.clientX > innerWidth / 2 : t.clientX < innerWidth / 2;
+      if (joySide && joyId === null) {
         joyId = t.identifier;
         joyX = t.clientX;
         joyY = t.clientY;
