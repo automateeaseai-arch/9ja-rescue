@@ -20,7 +20,7 @@ const RANGE = 90;
 const MAX_HEALTH = RULES.maxHealth;
 
 // opts: physics, camera, player, hostiles, fx, isTouch, onDown() (knocked out)
-export function createCombat({ physics, camera, player, hostiles, fx, isTouch, onDown }) {
+export function createCombat({ physics, camera, player, hostiles, fx, isTouch, onDown, aimNdc }) {
   const ui = {
     cross: document.getElementById('crosshair'),
     health: document.getElementById('health'),
@@ -47,7 +47,10 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
     st.shots++;
     st.mag--;
     camera.getWorldPosition(O);
-    camera.getWorldDirection(D);
+    // Through the crosshair, which may have been dragged off the screen centre.
+    const n = aimNdc?.();
+    if (n && (n.x || n.y)) D.set(n.x, n.y, 0.5).unproject(camera).sub(O).normalize();
+    else camera.getWorldDirection(D);
     // Nearest wall, rock or ground along the aim.
     ray.origin = { x: O.x, y: O.y, z: O.z };
     ray.dir = { x: D.x, y: D.y, z: D.z };

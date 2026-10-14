@@ -4,7 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { loadSharedAnims, retarget, upperBody, lowerBody } from './anims.js';
+import { loadSharedAnims, retarget, upperBody, lowerBody, rotationsOnly } from './anims.js';
 import { sound } from './sound.js';
 
 export const CHARACTERS = [
@@ -17,6 +17,8 @@ export const CHARACTERS = [
 const WALK_SPEED = 1.7;   // metres per second
 const RUN_SPEED = 5.0;
 const JUMP_SPEED = 7.0;      // ~1.35 m high
+// Meshy Regular_Jump clip times (s): take-off, tucked at the top, back to standing.
+const JUMP_TAKEOFF = 0.42, JUMP_TUCK = 0.85, JUMP_END = 1.5;
 const JUMP_FORWARD_MIN = 3.5; // a jump always carries you forward at least this fast (m/s)
 const JUMP_FORWARD_BOOST = 1.2;
 const GRAVITY = -18;
@@ -156,7 +158,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   let speed = 0;
   let facing = Math.PI; // start facing -Z (towards the village house)
   let airborne = false;
-  let stepDist = 0, airT = 0, strokeT = 0;   // footstep, landing and swim-stroke timing
+  let stepDist = 0, airT = 0, strokeT = 0;
+  let jumpAnim = -1, jumpW = 0;   // jump clip time (-1: not jumping) and blend weight   // footstep, landing and swim-stroke timing
   let aim = 0;
   const airVel = new THREE.Vector3();
   let punchT = -1;            // clip time of the melee attack in progress, or -1
@@ -208,9 +211,12 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       climb: mixer.clipAction(retarget(A.climb, model, 'loopUp')),
       ropeHang: mixer.clipAction(retarget(A.ropeHang, model)),
       barHang: mixer.clipAction(retarget(A.barHang, model)),
+      // Jump: rotations only (the physics does the rising), from the take-off frame.
+      jump: mixer.clipAction(rotationsOnly(retarget(A.jump, model))),
+      sitRide: mixer.clipAction(retarget(A.sitRide, model)),
     };
     for (const a of Object.values(actions)) { a.play(); a.setEffectiveWeight(0); }
-    for (const a of [actions.punch, actions.throw, actions.slash, actions.kick]) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
+    for (const a of [actions.punch, actions.throw, actions.slash, actions.kick, actions.jump]) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
     actions.idle.setEffectiveWeight(1);
   }
 
@@ -318,7 +324,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   // air-drop module places the player each step. seat.pose picks the clip:
   // { clip, time } holds one frame, { clip, rate } plays it.
   let ride = null;
-  const RIDE_POSE = { clip: 'crouchWalk', time: 0.3 }; // knees bent, hands forward: sits on the bike
+  const RIDE_POSE = { clip: 'sitRide', rate: 1 }; // seated, hands forward on the bars
   function updateRide(dt, input, cameraPitch) {
     for (const f of ['consumeJump', 'consumePunch', 'consumeKick', 'consumeThrow', 'consumeCrouch']) input[f]?.();
     state.aiming = false;
@@ -368,7 +374,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
 
     const crouchPressed = input.consumeCrouch?.();
     if (crouchPressed && state.mode === 'ground' && !state.disabled) state.crouch = !state.crouch;
-    if (state.mode !== 'ground' || (s.run && mag > 0.05)) state.crouch = false;
+    if (state.mode !== 'ground') state.crouch = false;   // crouched players can move (and push the stick fully) and stay crouched
     // Melee: Fire with the cutlass slashes; punch and kick otherwise.
     state.weapon = s.weapon ?? 'gun';
     const punchIn = input.consumePunch?.(), kickIn = input.consumeKick?.();
@@ -443,6 +449,10 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
             speed = 0;
           } else {
             vy = JUMP_SPEED;
+            jumpAnim = JUMP_TAKEOFF;
+            state.crouch = false;
+            actions?.jump.reset().play();
+            if (actions) actions.jump.time = JUMP_TAKEOFF;
             // Launch forward in the direction of travel, or the way the character faces.
             airVel.copy(dir).multiplyScalar(Math.max(speed * JUMP_FORWARD_BOOST, JUMP_FORWARD_MIN));
             airborne = true;
@@ -511,7 +521,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   }
 
   const ALL = ['idle', 'walk', 'run', 'crouchIdle', 'crouchWalk', 'idleLegs', 'walkLegs', 'runLegs', 'crouchIdleLegs',
-    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb', 'ropeHang', 'barHang', 'slash', 'kick'];
+    'crouchWalkLegs', 'shoot', 'punch', 'throw', 'swimIdle', 'swimForward', 'climb', 'ropeHang', 'barHang', 'slash', 'kick', 'jump', 'sitRide'];
   const W = {};
   function animate(dt) {
     for (const k of ALL) W[k] = 0;
@@ -542,6 +552,18 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       for (const [k, w] of Object.entries(body)) {
         W[k] = w * (1 - upper) * (1 - kickW);
         W[k + 'Legs'] = w * upper * (1 - kickW);
+      }
+      // Jumping: the jump clip plays over the legs and body (arms keep aiming).
+      if (jumpAnim >= 0) {
+        jumpAnim += dt;
+        // Hold the tuck while still in the air; after landing, finish the clip.
+        if (!grounded && jumpAnim > JUMP_TUCK) { jumpAnim = JUMP_TUCK; actions.jump.time = JUMP_TUCK; }
+        if (jumpAnim > JUMP_END) jumpAnim = -1;
+      }
+      jumpW = THREE.MathUtils.damp(jumpW, jumpAnim >= 0 && state.mode === 'ground' ? 1 : 0, 14, dt);
+      if (jumpW > 0.001) {
+        for (const k of Object.keys(body)) { W[k] *= 1 - jumpW; W[k + 'Legs'] *= 1 - jumpW; }
+        W.jump = jumpW * (1 - kickW);
       }
       W.shoot = aim * (1 - punchW) * (1 - throwW) * (1 - kickW);
       W.punch = melee.action === 'punch' ? punchW : 0;

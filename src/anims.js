@@ -7,6 +7,7 @@
 //   Throw_Anim.glb:   over-shoulder throw (grenades)
 //   Air_Anims.glb:    rope hang (under the parachute), bar hang (hang glider)
 //   Melee_Anims.glb:  right-hand sword slash (cutlass), Spartan kick
+//   Move_Anims.glb:   regular jump, sitting idle (riding the motorbike)
 import * as THREE from 'three';
 import { loadGlb } from './player.js';
 
@@ -25,9 +26,9 @@ function hipsHeight(root) {
 
 export async function loadSharedAnims() {
   if (shared) return shared;
-  const [a, b, c, d, e] = await Promise.all([
+  const [a, b, c, d, e, f] = await Promise.all([
     loadGlb('models/anims/Shared_Anims.glb'), loadGlb('models/anims/Combat_Anims.glb'), loadGlb('models/anims/Throw_Anim.glb'),
-    loadGlb('models/anims/Air_Anims.glb'), loadGlb('models/anims/Melee_Anims.glb'),
+    loadGlb('models/anims/Air_Anims.glb'), loadGlb('models/anims/Melee_Anims.glb'), loadGlb('models/anims/Move_Anims.glb'),
   ]);
   // Each clip remembers its source skeleton's hip height for retargeting.
   const from = (gltf, n) => {
@@ -53,6 +54,8 @@ export async function loadSharedAnims() {
     barHang: from(d, 'Bar_Hang_Idle'),
     slash: from(e, 'Right_Hand_Sword_Slash'),
     kick: from(e, 'Spartan_Kick'),
+    jump: from(f, 'Regular_Jump'),
+    sitRide: from(f, 'Chair_Sit_Idle_M'),
   };
   return shared;
 }
@@ -89,6 +92,14 @@ export function retarget(clip, targetRoot, motion = 'inplace') {
 export function upperBody(clip) {
   return new THREE.AnimationClip(`${clip.name}_upper`, clip.duration, clip.tracks.filter((t) => !LEG_BONES.has(boneOf(t))));
 }
+// Drops the hips' movement, keeping only joint rotations (for clips whose
+// rise and fall the physics already does, like the jump).
+export function rotationsOnly(clip) {
+  const c = clip.clone();
+  c.tracks = c.tracks.filter((t) => !t.name.endsWith('.position'));
+  return c;
+}
+
 export function lowerBody(clip) {
   return new THREE.AnimationClip(`${clip.name}_lower`, clip.duration, clip.tracks.filter((t) => LEG_BONES.has(boneOf(t))));
 }

@@ -182,3 +182,9 @@ body[data-buttons=large] :is(.touch-ctrl, #interact-btn, #ammo, #weapons) { zoom
 .lefty.touch #ammo { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 160px); }
 .lefty.touch #interact-btn { right: auto; left: calc(max(18px, env(safe-area-inset-left)) + 236px); }
 .lefty.touch #weapons { left: 62%; }
+
+/* Climb: Jump turns into a glowing Climb button when a wall or rock in front can be climbed. */
+#jump-btn.climb { background: rgba(242, 178, 51, 0.85); color: #1b1410; animation: climb-pulse 0.9s ease-in-out infinite; }
+@keyframes climb-pulse { 50% { box-shadow: 0 0 0 6px rgba(242, 178, 51, 0.35); } }
+#climb-hint { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); background: rgba(242, 178, 51, 0.9); color: #1b1410; font-weight: 800; padding: 6px 12px; border-radius: 8px; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { #jump-btn.climb { animation: none; } }

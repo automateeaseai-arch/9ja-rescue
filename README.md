@@ -69,6 +69,8 @@ Air drop clips in `public/models/anims/Air_Anims.glb` (78 KB): Rope_Hang_Idle (u
 
 Melee clips in `public/models/anims/Melee_Anims.glb` (61 KB): Right_Hand_Sword_Slash (cutlass, arms only, hit at 0.5 s clip time) and Spartan_Kick (whole body, hit at 0.55 s), Meshy animation task `01a13664-3ec4-7077-90c1-9b0905fec7aa` on the same rig (2 × 3 = 6 credits).
 
+Movement clips in `public/models/anims/Move_Anims.glb` (113 KB): Regular_Jump (action 466; played from take-off at 0.42 s, held tucked at 0.85 s while airborne, rotations only so the physics does the rising) and Chair_Sit_Idle_M (action 33; the motorbike rider, Meshy has no riding clip), Meshy animation task `01a139ec-871c-7206-b786-b5aa8078b56b` on the same rig (2 × 3 = 6 credits, 14 Oct).
+
 ## UI images (`public/ui/`, no Meshy credits)
 From the owner's uploads: `bg/01`–`13`, `03A`–`03D` are the HiFi board frames with the baked buttons painted out (OpenCV inpainting); `bg/05`–`10` and the briefing scenes (`savanna-village`, `savanna-kopjes`, `rock-arch`, `forest-trail`, `terraces`, `wetland`, `cargo-ramp`) are the clean scenery references; `drone` is the board 12 compound view. `portraits/` are crops of the board cards (male, female, male hunter, male soldier, female soldier); `female-hunter` is a render of the Forest Scout model. `captives/01`–`10` are face crops of the approved hostage sheets (030–039). `items/` are the owner's item images with the black background made transparent. WebP, about 4.6 MB in total, loaded per screen.
 

@@ -145,6 +145,8 @@ async function start() {
   });
   combat = createCombat({
     physics, camera, player, hostiles, fx, isTouch: input.isTouch, onDown: () => mission?.onDown(),
+    // Where the crosshair is, in screen units -1..1 (it can be dragged off centre while aiming).
+    aimNdc: () => ({ x: crossOff.x / (innerWidth / 2), y: -crossOff.y / (innerHeight / 2) }),
   });
   const captives = createCaptives(scene, { heightAt: surfaceAt, onDiscover: (c) => mission?.onDiscover(c) });
   grenades = createGrenades({ scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer: (n) => combat.hurt(n) });
@@ -159,6 +161,9 @@ async function start() {
   // Air entry from the cargo plane (chosen per mission).
   const airdrop = createAirDrop({ scene, physics, player, fx, heightAt: surfaceAt, waterAt, hurt: (n) => combat.hurt(n), onLand: () => mission?.arrive() });
   const promptEl = document.getElementById('prompt');
+  const jumpBtnEl = document.getElementById('jump-btn');
+  const climbHint = document.getElementById('climb-hint');
+  let climbCheck = 0, canClimb = false;
   const pickups = createPickups(scene, {
     heightAt: surfaceAt, heal: (n) => combat.heal(n), addAmmo: (n) => combat.addAmmo(n), fx,
     onCollect: (it) => mission?.onCollect(it),
@@ -233,7 +238,7 @@ async function start() {
     playing = false;
     sound.setGameActive(false);
     document.body.classList.add('in-menu');
-    for (const el of document.querySelectorAll('.touch-ctrl, #interact-btn, #crosshair, #prompt, #waypoint, #guide, #tip')) el.hidden = true;
+    for (const el of document.querySelectorAll('.touch-ctrl, #interact-btn, #crosshair, #prompt, #climb-hint, #waypoint, #guide, #tip')) el.hidden = true;
     input.state.aim = false;
     screens.show(where === 'characters' ? '05' : '04', { mode: 'mission' });
   }
@@ -242,6 +247,14 @@ async function start() {
   // hostile picks that one; the camera then turns to keep the crosshair on
   // the target. Swiping (or dragging from Fire) steers freely, finer while aiming.
   let aimLock = null, wasAiming = false;
+  // Drag-to-aim on phones: while aiming, swiping moves the crosshair itself
+  // (offset from the screen centre in pixels); near the screen edge the view
+  // turns that way; close to a hostile it sticks to them.
+  const crossOff = { x: 0, y: 0 };
+  // The crosshair's offset as angles, so the character and rifle point at it.
+  const tanV = () => Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const aimYawOff = () => Math.atan((crossOff.x / (innerWidth / 2)) * tanV() * camera.aspect);
+  const aimPitchOff = () => Math.atan((crossOff.y / (innerHeight / 2)) * tanV());
   const crossEl = document.getElementById('crosshair');
   const sp = new THREE.Vector3(), chestPt = new THREE.Vector3(), headPt = new THREE.Vector3();
   const alive = () => hostiles.units.filter((u) => u.id && u.state !== 'down' && u.model.visible);
@@ -276,6 +289,34 @@ async function start() {
     }
     return best;
   }
+  function moveCrosshair(look, dt) {
+    const hw = innerWidth / 2, hh = innerHeight / 2;
+    // The finger moves the crosshair (input reports swipes at 1.6× pixels).
+    crossOff.x = THREE.MathUtils.clamp(crossOff.x + (look.x / 1.6) * lookSpeed, -hw + 24, hw - 24);
+    crossOff.y = THREE.MathUtils.clamp(crossOff.y + (look.y / 1.6) * lookSpeed, -hh + 24, hh - 24);
+    // Near the edge the view turns towards it, faster the closer to the edge.
+    const ex = Math.max(0, Math.abs(crossOff.x) - hw * 0.62), ey = Math.max(0, Math.abs(crossOff.y) - hh * 0.6);
+    if (ex > 0) yaw -= Math.sign(crossOff.x) * ex * 0.012 * dt;
+    if (ey > 0) pitch = THREE.MathUtils.clamp(pitch + Math.sign(crossOff.y) * ey * 0.01 * dt, -0.5, 1.1);
+    // Sticky aim: within reach of a visible hostile, the crosshair settles on them.
+    if (Math.hypot(look.x, look.y) < 30) {
+      const c = { x: hw + crossOff.x, y: hh + crossOff.y };
+      headPt.copy(player.position).y += 1.6;
+      let best = null, bestD = 55;
+      for (const u of alive()) {
+        if (u.model.position.distanceTo(player.position) > 60) continue;
+        const s2 = screenOf(u);
+        if (!s2) continue;
+        const d = Math.hypot(s2.x - c.x, Math.max(0, Math.abs(s2.y - c.y) - 25));
+        if (d < bestD) { chestPt.copy(u.model.position).y += 1.2; if (hostiles.clearLine(headPt, chestPt)) { bestD = d; best = s2; } }
+      }
+      if (best) {
+        const k = Math.min(1, dt * 6);
+        crossOff.x += (best.x - c.x) * k;
+        crossOff.y += (best.y - c.y) * k;
+      }
+    }
+  }
   function updateAim(look, dt) {
     const tap = input.consumeTap?.();
     const aiming = player.state.aiming;
@@ -307,8 +348,16 @@ async function start() {
     const look = input.consumeLook();
     // Finer turning while aiming, so small adjustments are easy.
     const fine = player.state.aiming ? 0.55 : 1;
-    yaw -= look.x * 0.004 * fine * lookSpeed;
-    pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003 * fine * lookSpeed, -0.5, 1.1);
+    const dragAim = input.isTouch && player.state.aiming && !vehicles.driving && !airdrop.active;
+    if (dragAim && !aimLock) moveCrosshair(look, dt || 0.016);
+    else {
+      yaw -= look.x * 0.004 * fine * lookSpeed;
+      pitch = THREE.MathUtils.clamp(pitch + look.y * 0.003 * fine * lookSpeed, -0.5, 1.1);
+      // Not aiming (or locked on): the crosshair glides back to the centre.
+      const k = Math.min(1, (dt || 0.016) * 8);
+      crossOff.x -= crossOff.x * k; crossOff.y -= crossOff.y * k;
+    }
+    crossEl.style.transform = `translate(calc(-50% + ${crossOff.x.toFixed(1)}px), calc(-50% + ${crossOff.y.toFixed(1)}px))`;
     if (!vehicles.driving && !airdrop.active) updateAim(look, dt);
 
     const car = vehicles.driving;
@@ -408,7 +457,7 @@ async function start() {
     while (acc >= FIXED) {
       airdrop.update(FIXED, input);
       vehicles.update(FIXED, vehicleInput);
-      player.update(FIXED, input, yaw, pitch);
+      player.update(FIXED, input, yaw - aimYawOff(), pitch + aimPitchOff());
       physics.step();
       acc -= FIXED;
     }
@@ -458,6 +507,18 @@ async function start() {
     if (input.isTouch) for (const [id, v] of Object.entries(show)) document.getElementById(id).hidden = !v;
     document.getElementById('ammo').hidden = !gun || busy;
     document.getElementById('weapons').hidden = busy;
+    // Climbing: when a wall or rock in front can be climbed, Jump becomes Climb.
+    if ((climbCheck -= dt) <= 0) {
+      climbCheck = 0.15;
+      const can = !busy && !swim && player.state.mode === 'ground'
+        && !!player.findLedge(new THREE.Vector3(Math.sin(player.facing), 0, Math.cos(player.facing)));
+      if (can !== canClimb) {
+        canClimb = can;
+        jumpBtnEl.textContent = can ? 'Climb' : 'Jump';
+        jumpBtnEl.classList.toggle('climb', can);
+        if (!input.isTouch) { climbHint.hidden = !can; }
+      }
+    }
     // Air drop hints.
     if (airdrop.snagged) {
       promptEl.hidden = false;

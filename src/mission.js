@@ -256,7 +256,7 @@ export function createMission(ctx) {
     showTip('Collect health supplies to improve your chances before reaching the captive site.', 7);
     if (!account.tutorialDone) {
       later(7.5, () => showTip(ctx.isTouch
-        ? 'Left thumb: move (push further to run) · Right side: look · Fire, Aim, Jump, Crouch on the right · Interact appears when something is near'
+        ? 'Left thumb: move · Right side: look · Aim, then drag to move the crosshair onto a hostile · Jump turns to Climb at walls and rocks · Interact appears when something is near'
         : 'WASD move · Shift run · F / right mouse fire · Q aim · R reload · E punch · 1 gun · 2 unarmed · V interact · Esc pause', 9));
       account.tutorialDone = true;
       saveAccount(account);
