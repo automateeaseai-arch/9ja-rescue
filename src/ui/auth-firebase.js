@@ -21,6 +21,21 @@ const CONFIG = {
   messagingSenderId: '787109971207',
   appId: '1:787109971207:web:2d68223460c10c468271a2',
 };
+// Google's sign-in window names the sign-in address. On the game's own site
+// it opens from auth.9jarescue.app (Firebase Hosting custom domain), so the
+// window says "continue to auth.9jarescue.app"; elsewhere, or if that address
+// doesn't answer yet (new certificate), it falls back to the default.
+const OWN_AUTH = 'auth.9jarescue.app';
+async function pickAuthDomain() {
+  if (!/(^|\.)9jarescue\.app$/.test(location.hostname)) return CONFIG.authDomain;
+  try {
+    const ok = await Promise.race([
+      fetch(`https://${OWN_AUTH}/__/auth/handler.js`, { mode: 'no-cors', cache: 'no-store' }).then(() => true),
+      new Promise((r) => setTimeout(() => r(false), 2500)),
+    ]);
+    return ok ? OWN_AUTH : CONFIG.authDomain;
+  } catch { return CONFIG.authDomain; }
+}
 const SEEN = '9ja.online.seen';   // this device has signed in before (start on Sign in, not Welcome)
 
 // Firebase error codes in plain words.
@@ -48,7 +63,7 @@ function plain(e) {
 const seen = () => { try { localStorage.setItem(SEEN, '1'); } catch { /* ignore */ } };
 
 export async function createFirebaseAuth() {
-  const app = initializeApp(CONFIG);
+  const app = initializeApp({ ...CONFIG, authDomain: await pickAuthDomain() });
   const fa = getAuth(app);
   fa.useDeviceLanguage();
   // Wait for the saved session (if any) before the screens decide where to start.
