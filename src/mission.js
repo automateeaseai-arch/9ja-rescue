@@ -3,7 +3,7 @@
 // One mission at a time, generated from a saved seed: a random captive site
 // (SITES: the valley plantation compound or the savanna kopje camp), a
 // validated random arrival, seven roaming hostiles on patrol beats and eight
-// health kits chosen along the way to the site, four ammunition boxes (+5 bullets each), six
+// health kits chosen along the way to the site, four ammunition boxes (+30 bullets each; defeated hostiles drop 10), six
 // defenders on posts drawn from the site's pool, two kits in its yard, and
 // one or two random captives (alternating per new mission) in random rooms.
 // Stages:
@@ -290,6 +290,7 @@ export function createMission(ctx) {
     setup.kits = setup.kits.map(openSpot);
     setup.ammo = setup.ammo.map(openSpot);
     await pickups.configure([...setup.kits, ...setup.ammo], collected);
+    for (const u of hostiles.units) if (u.id && u.state === 'down' && !collected.has(`drop-${u.id}`)) pickups.drop(dropAt(u));
     // Every kit must be there before play starts (owner, 14 Oct).
     const placed = pickups.items.filter((k) => k.kind === 'health' && k.obj.children.length).length;
     if (placed !== setup.kits.length) throw new Error(`Only ${placed} of ${setup.kits.length} first-aid kits could be placed. Tap Retry.`);
@@ -419,7 +420,13 @@ export function createMission(ctx) {
   const roamUnits = () => hostiles.units.filter((u) => u.group === 'roam');
   const left = (list) => list.filter((u) => u.state !== 'down').length;
 
-  function onDefeated() { if (ready) later(0, checkpoint); }
+  // A defeated hostile leaves 10 bullets where they fell (owner, 14 Oct).
+  const dropAt = (u) => ({ id: `drop-${u.id}`, x: u.model.position.x + 0.7, z: u.model.position.z + 0.4, yHint: u.model.position.y });
+  function onDefeated(u) {
+    if (!ready) return;
+    if (u?.id && !collected.has(`drop-${u.id}`)) pickups.drop(dropAt(u));
+    later(0, checkpoint);
+  }
   function onCollect(item) { collected.add(item.id); checkpoint(); }
   function onDiscover(c) { showTip(`You found ${c.name}.`, 4); checkpoint(); }
   function onDown() {
@@ -529,6 +536,11 @@ export function createMission(ctx) {
           what: close ? (k.kind === 'crate' ? 'Ammo box' : 'First-aid kit') : 'Captive site' };
       }
       case 'CLEAR_SITE': {
+        // Low on bullets: the arrow leads to the nearest unopened box or dropped bullets.
+        if (combat.stats.mag + combat.stats.reserve < 20) {
+          const b = nearest(pickups.items.filter((k) => !k.used && k.kind !== 'health'), (k) => v3(k.x, k.z, pp.y));
+          if (b && Math.hypot(b.x - pp.x, b.z - pp.z) < 200) return { text: 'Low on bullets: pick up ammunition', at: v3(b.x, b.z), what: b.kind === 'drop' ? 'Bullets' : 'Ammo box' };
+        }
         const inside = Math.hypot(pp.x - site.x, pp.z - site.z) < site.r;
         const h = nearest(siteUnits().filter((u) => u.state !== 'down'), (u) => u.model.position);
         if (siteLeft > 0) return { text: `Clear the captive site: ${siteLeft} defenders left`, at: inside && h ? h.model.position : entrance(), what: inside && h ? 'Defender' : 'Captive site' };

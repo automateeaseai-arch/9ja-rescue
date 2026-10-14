@@ -17,7 +17,8 @@ export const RULES = {
   startReserve: 50,        // 10 loaded + 50 reserve
   reloadTime: 2.0,
   ammoPack: 10,            // old saved missions' ammo packs
-  ammoCrate: 5,            // each of the four ammunition boxes (owner, 14 Oct)
+  ammoCrate: 30,           // each of the four ammunition boxes (owner, 14 Oct: 5 → 30)
+  ammoDrop: 10,            // bullets left by each defeated hostile (owner, 14 Oct)
   ammoCrates: 4,
   rpPerCaptive: 5000,
   missionPoints: 2,

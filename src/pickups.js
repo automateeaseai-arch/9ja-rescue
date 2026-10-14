@@ -1,5 +1,5 @@
 // Pickups placed by the mission (game plan v2.2): ten first-aid kits (Meshy
-// model, +10 HP each, also above 100) and four ammunition boxes (+5 bullets,
+// model, +10 HP each, also above 100) and four ammunition boxes (+30 bullets,
 // the lid opens; older saved missions still have six ammo packs, +10). Each hovers over a glowing ring (green for health,
 // amber for ammo), slowly turns, and is collected once on contact.
 import * as THREE from 'three';
@@ -67,7 +67,7 @@ function codeKit() {
 }
 
 // Ammunition box (owner, 14 Oct): runs into it → the lid swings open and
-// 5 bullets are added. Code-built for now (olive case, yellow band, brass
+// 30 bullets are added. Code-built for now (olive case, yellow band, brass
 // rounds inside); `lid` is the part that opens, hinged at the back edge.
 function codeCrate() {
   const g = new THREE.Group();
@@ -137,7 +137,13 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
   async function configure(list, collected = new Set()) {
     clear();
     await kitReady;
-    for (const p of list) {
+    for (const p of list) add(p, collected.has(p.id));
+  }
+
+  // One pickup. Kinds: health, crate (ammunition box), ammo (old saves' packs),
+  // drop (bullets left by a defeated hostile, owner 14 Oct).
+  function add(p, used = false) {
+    {
       const g = new THREE.Group();
       let obj;
       if (p.kind === 'health') {
@@ -148,13 +154,12 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
         obj.rotation.y = p.yaw ?? 0;
       } else obj = ammoBox();
       g.add(obj);
-      const ring = new THREE.Mesh(ringGeo, rings[p.kind === 'crate' ? 'ammo' : p.kind].clone());
+      const ring = new THREE.Mesh(ringGeo, rings[p.kind === 'health' ? 'health' : 'ammo'].clone());
       g.add(ring);
-      const beam = new THREE.Mesh(beamGeo, beams[p.kind === 'crate' ? 'ammo' : p.kind]);
+      const beam = new THREE.Mesh(beamGeo, beams[p.kind === 'health' ? 'health' : 'ammo']);
       g.add(beam);
       g.position.set(p.x, heightAt(p.x, p.z, p.yHint), p.z);
       scene.add(g);
-      const used = collected.has(p.id);
       g.visible = !used;
       const it = { ...p, g, obj, ring, beam, used, open: 0, phase: Math.random() * 6 };
       if (p.kind === 'crate') showCrate(it, used ? 1 : 0);
@@ -173,6 +178,7 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
   return {
     items,
     configure,
+    drop(p) { if (!items.some((k) => k.id === p.id)) add({ ...p, kind: 'drop' }); },
     ready: kitReady,
     // For tests: how the kits are drawn ('model' or 'code').
     get kitKind() { return kitModel ? (kitModel.userData.code ? 'code' : 'model') : 'loading'; },
@@ -208,7 +214,7 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
         k.ring.position.y = 0.04;
         k.ring.material.opacity = 0.75 + Math.sin(t * 3 + k.phase) * 0.25;
         if (d < RADIUS && Math.abs(p.y - k.g.position.y) < 1.5 && !player.state.disabled) {
-          const ok = k.kind === 'health' ? heal(RULES.kitHeal) : addAmmo(k.kind === 'crate' ? RULES.ammoCrate : RULES.ammoPack);
+          const ok = k.kind === 'health' ? heal(RULES.kitHeal) : addAmmo(k.kind === 'crate' ? RULES.ammoCrate : k.kind === 'drop' ? RULES.ammoDrop : RULES.ammoPack);
           if (ok) {
             k.used = true;
             if (k.kind === 'crate') { showCrate(k, 0); sound.play('impact', { volume: 0.25, rate: 1.6 }); }
