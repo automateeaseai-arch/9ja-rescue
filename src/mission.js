@@ -447,6 +447,7 @@ export function createMission(ctx) {
     handover(present);
   }
 
+  let lastCounts = '', lastFocus = null;
   let driveRequest = false;
   function takeDriveRequest() { const d = driveRequest; driveRequest = false; return d; }
 
@@ -544,10 +545,28 @@ export function createMission(ctx) {
 
     // HUD.
     const o = objective();
-    ui.objective.textContent = o.text;
+    ui.objective.textContent = o.text;   // kept for screen readers; the HUD shows icons
     waypoint(o.at, o.what);
+    // Icon counters (owner, 14 Oct: no sentence, just icons and numbers).
     const total = left(hostiles.units), sl = left(siteUnits());
-    ui.counts.textContent = `Hostiles ${total}/10 · Site ${sl}/6${grenades.count ? ` · Grenades ${grenades.count}` : ''}`;
+    const kitsGot = 8 - setup.kits.filter((k) => k.id.startsWith('kit-') && !k.id.startsWith('kit-in') && !collected.has(k.id)).length;
+    const freed = captives.units.filter((c) => ['following', 'boarding', 'boarded', 'departed'].includes(c.state)).length;
+    const counts = `${kitsGot}/8|${total}/10|${sl}/6|${freed}/${setup.captives.length}|${grenades.count}`;
+    if (counts !== lastCounts) {
+      lastCounts = counts;
+      ui.cKits.textContent = `${kitsGot}/8`;
+      ui.cHostiles.textContent = `${total}/10`;
+      ui.cSite.textContent = `${sl}/6`;
+      ui.cCaptives.textContent = `${freed}/${setup.captives.length}`;
+      ui.cGrenades.textContent = grenades.count;
+      ui.cGrenades.parentElement.hidden = !grenades.count;
+    }
+    // The stage's own counter glows.
+    const focus = { EXPLORE: 'kits', CLEAR_SITE: 'site', RESCUE: 'captives' }[stage] ?? (stage === 'ESCORT' && total ? 'hostiles' : '');
+    if (focus !== lastFocus) {
+      lastFocus = focus;
+      for (const k of ['kits', 'hostiles', 'site', 'captives']) ui.counts.querySelector(`.c-${k}`).classList.toggle('focus', k === focus);
+    }
     ui.saveWarn.hidden = !saveFailed();
     // Interact.
     const act = down ? null : interaction();
@@ -579,7 +598,8 @@ export function createMission(ctx) {
   function buildUi() {
     const el = (id) => document.getElementById(id);
     const u = {
-      objective: el('objective'), counts: el('counts'), way: el('waypoint'), wayDist: el('way-dist'),
+      objective: el('objective'), counts: el('counts'),
+      cKits: el('c-kits'), cHostiles: el('c-hostiles'), cSite: el('c-site'), cCaptives: el('c-captives'), cGrenades: el('c-grenades'), way: el('waypoint'), wayDist: el('way-dist'),
       guide: el('guide'), guideArrow: el('guide-arrow'), guideText: el('guide-text'),
       interact: el('interact-btn'), tip: el('tip'), down: el('down'), results: el('results'), resultsBody: el('results-body'),
       pause: el('pause'), pauseInfo: el('pause-info'), saveWarn: el('save-warn'),

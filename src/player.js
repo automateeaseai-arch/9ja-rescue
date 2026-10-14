@@ -587,6 +587,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   return {
     root,
     setCharacter,
+    // Everything that draws the player (body, rifle, cutlass), e.g. to hide them from a close camera.
+    get parts() { return [root, rifle, cutlass].filter(Boolean); },
     get model() { return model; },
     // Called by the vehicles module every step while driving.
     ride(seat) {

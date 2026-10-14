@@ -202,7 +202,10 @@ async function start() {
   const head = new THREE.Vector3();
   const camOffset = new THREE.Vector3();
   const camTarget = new THREE.Vector3();
-  const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  let playerHidden = false;
+  const camBall = new RAPIER.Ball(0.22);   // about the size of the camera's near view
+  const CAM_ROT = { x: 0, y: 0, z: 0, w: 1 };
+  const CAM_FILTER = RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
 
   mission = createMission({
     scene, camera, physics, player, combat, hostiles, captives, pickups, grenades, vehicles, airdrop, input, applyCharacter,
@@ -391,27 +394,38 @@ async function start() {
       Math.sin(pitch),
       Math.cos(yaw) * Math.cos(pitch)
     );
-    // Pull the camera in if a wall or rock is between it and the player.
-    ray.origin = { x: head.x, y: head.y, z: head.z };
-    ray.dir = { x: camOffset.x, y: camOffset.y, z: camOffset.z };
+    // Nothing may come between the camera and the player: a small ball is
+    // swept from the head to the shoulder point and on to the camera, and
+    // the camera stops just short of the first wall, roof, rock or trunk.
+    // It snaps in at once and eases back out when the way is clear.
+    const side = car || air ? 0 : 0.5;   // over the right shoulder (centred in a vehicle or the air)
+    const sx = Math.cos(yaw), sz = -Math.sin(yaw);
+    let sideLen = side;
+    if (side) {
+      const h = physics.castShape(head, CAM_ROT, { x: sx, y: 0, z: sz }, camBall, 0, side, false, CAM_FILTER);
+      if (h) sideLen = Math.max(0, h.time_of_impact - 0.05);
+    }
+    camTarget.copy(head);
+    camTarget.x += sx * sideLen;
+    camTarget.z += sz * sideLen;
     // Closer over the shoulder while aiming; further back in a vehicle or in the air.
     const wantDist = air ? airdrop.camDist : car ? car.T.camDist : player.state.aiming ? 2.8 : CAM_DIST;
-    const hit = physics.castRay(ray, Math.max(camDist, wantDist), true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
-    camDist = air === 'plane' ? wantDist : THREE.MathUtils.damp(camDist, wantDist, 3, dt || 1);
-    let dist = hit ? Math.max(0.6, Math.min(camDist, hit.timeOfImpact - 0.25)) : camDist;
-    // In the air, come in closer rather than sit inside a tree's leaves.
-    if (air) {
-      while (dist > 3 && treeAt(head.x + camOffset.x * dist, head.y + camOffset.y * dist, head.z + camOffset.z * dist, 0.5)) dist -= 0.5;
+    // (In the plane the camera sits inside the bay on purpose.)
+    const hit = air === 'plane' ? null : physics.castShape(camTarget, CAM_ROT, camOffset, camBall, 0, wantDist, false, CAM_FILTER);
+    let free = hit ? Math.max(0.15, hit.time_of_impact - 0.05) : wantDist;
+    // Tree trunks and (in the air) leaves have no colliders: step in past them.
+    const pad = air ? 0.5 : 0.3;
+    while (free > 0.4 && treeAt(camTarget.x + camOffset.x * free, camTarget.y + camOffset.y * free, camTarget.z + camOffset.z * free, pad)) free -= 0.25;
+    if (air === 'plane' || free < camDist) camDist = free;
+    else camDist = THREE.MathUtils.damp(camDist, free, 3, dt || 1);
+    camera.position.copy(camTarget).addScaledVector(camOffset, camDist);
+    // Squeezed right up to the player (backed into a corner): hide them so
+    // their own body doesn't fill the view (layer 1 is not drawn).
+    const close = !car && !air && camDist < 0.9;
+    if (close !== playerHidden) {
+      playerHidden = close;
+      for (const part of player.parts) part.traverse((o) => o.layers.set(close ? 1 : 0));
     }
-
-    camera.position.copy(head).addScaledVector(camOffset, dist);
-    // Slight over-the-shoulder offset to the right (centred in a vehicle).
-    const side = car || air ? 0 : 0.5;
-    camera.position.x += Math.cos(yaw) * side;
-    camera.position.z -= Math.sin(yaw) * side;
-    camTarget.copy(head);
-    camTarget.x += Math.cos(yaw) * side;
-    camTarget.z -= Math.sin(yaw) * side;
     camera.lookAt(camTarget);
     // Grenade blasts shake the camera.
     const sh = grenades?.shake ?? 0;
@@ -538,7 +552,7 @@ async function start() {
 
   // Handy for debugging from the browser console.
   window.game = {
-    scene, camera, player, physics, renderer,
+    scene, camera, player, physics, renderer, RAPIER,
     captives, valley, land, surfaceAt, hostiles, combat, pickups, grenades, vehicles, airdrop, mission, input,
     get aimLock() { return aimLock; },
     get dss() { return dss; },

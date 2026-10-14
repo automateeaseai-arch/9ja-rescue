@@ -35,17 +35,21 @@ html, body {
 }
 [hidden] { display: none !important; }
 .status {
-  background: var(--panel); padding: 6px 10px; border-radius: 8px; font-size: 13px; max-width: min(38vw, 420px);
+  background: var(--panel); padding: 5px 9px; border-radius: 8px; font-size: 13px; max-width: min(38vw, 420px);
   display: grid; gap: 3px; pointer-events: none;
 }
 .hp-row { display: flex; align-items: center; gap: 6px; }
 .hp-label { opacity: 0.8; font-size: 12px; }
 #hp-value { font-size: 15px; min-width: 2.2em; }
-#health { position: relative; width: 150px; height: 9px; background: rgba(27, 20, 16, 0.6); border-radius: 5px; overflow: hidden; }
+#health { position: relative; width: 110px; height: 9px; background: rgba(27, 20, 16, 0.6); border-radius: 5px; overflow: hidden; }
 #health-fill { height: 100%; width: 50%; background: #6fcf5a; transition: width 0.15s; }
 #health .hundred { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(255, 247, 234, 0.6); }
-#counts { font-size: 12px; opacity: 0.9; }
-#objective { font-size: 13px; line-height: 1.25; }
+#counts { display: flex; flex-wrap: wrap; gap: 4px 9px; font-size: 13px; }
+#counts .chip { display: inline-flex; align-items: center; gap: 3px; opacity: 0.85; }
+#counts .chip svg { width: 15px; height: 15px; flex: none; }
+#counts .chip.focus { opacity: 1; color: #ffd75a; }
+#counts .chip.focus svg { filter: drop-shadow(0 0 3px rgba(255, 215, 90, 0.9)); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #save-warn { color: #ffb4a0; font-size: 12px; }
 button { font: inherit; }
 #pause-btn, .touch-ctrl, #interact-btn, #weapons button, #punch-btn {
