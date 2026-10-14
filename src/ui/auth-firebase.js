@@ -9,6 +9,7 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   sendEmailVerification, sendPasswordResetEmail, signOut, deleteUser, reload,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
 } from 'firebase/auth';
 import { AuthError, emailProblem, passwordProblem } from './auth.js';
 
@@ -35,7 +36,12 @@ function plain(e) {
     'auth/too-many-requests': ['locked', 'Too many attempts. Wait a few minutes, then try again.'],
     'auth/network-request-failed': ['network', 'No connection to the account service. Check your internet and try again.'],
     'auth/user-disabled': ['disabled', 'This account has been turned off.'],
-    'auth/operation-not-allowed': ['setup', 'Email sign-in is not turned on for this game yet.'],
+    'auth/operation-not-allowed': ['setup', 'This way of signing in is not turned on for this game yet.'],
+    'auth/popup-closed-by-user': ['cancelled', ''],
+    'auth/cancelled-popup-request': ['cancelled', ''],
+    'auth/user-cancelled': ['cancelled', ''],
+    'auth/unauthorized-domain': ['setup', 'Google sign-in is not allowed on this web address yet (Firebase authorized domains).'],
+    'auth/account-exists-with-different-credential': ['other', 'This email already has an account. Sign in with your email and password.'],
   }[c];
   return m ? new AuthError(m[0], m[1]) : new AuthError('other', `Something went wrong (${c || e?.message || 'unknown'}). Try again.`);
 }
@@ -47,6 +53,8 @@ export async function createFirebaseAuth() {
   fa.useDeviceLanguage();
   // Wait for the saved session (if any) before the screens decide where to start.
   await new Promise((ok) => { const off = onAuthStateChanged(fa, () => { off(); ok(); }); });
+  // Coming back from a Google sign-in page (used when the pop-up was blocked).
+  await getRedirectResult(fa).catch(() => {});
   const me = () => fa.currentUser;
   const out = (u) => ({ uid: u.uid, email: u.email });
 
@@ -114,6 +122,26 @@ export async function createFirebaseAuth() {
       seen();
       if (!user.emailVerified) throw new AuthError('unverified', 'Verify your email to sign in.');
       return out(user);
+    },
+
+    // Google: the player picks an account in Google's own window. Google
+    // emails are already verified, so this goes straight in. An existing
+    // email account with the same address opens as the same account.
+    canGoogle: true,
+    async signInWithGoogle() {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      try {
+        const { user } = await signInWithPopup(fa, provider);
+        seen();
+        return out(user);
+      } catch (e) {
+        if (e?.code === 'auth/popup-blocked' || e?.code === 'auth/operation-not-supported-in-this-environment') {
+          await signInWithRedirect(fa, provider);   // the page leaves and comes back signed in
+          return new Promise(() => {});
+        }
+        throw plain(e);
+      }
     },
 
     signOut() { signOut(fa).catch(() => {}); },

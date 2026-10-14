@@ -25,6 +25,10 @@ const BG = (k) => `ui/bg/${k}.webp`;
 
 // Line icons (24 px grid, stroke = currentColor).
 const svg = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+// Google's "G" mark, for the Continue with Google button.
+const GOOGLE_G = '<svg class="g-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+const googleBtn = () => (auth.canGoogle ? `<div class="m-or"><span>or</span></div>${btn('Continue with Google', 'google', { kind: 'google', cls: 'block', icon: GOOGLE_G })}` : '');
+
 const I = {
   soundOn: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
   soundOff: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
@@ -160,7 +164,7 @@ export function createScreens() {
     '02': {
       bg: '02', pos: 'left center', cls: 's02',
       html: () => `<div class="m-panel m-side">${logo()}<h1>Your mission starts here</h1><div class="tag">Explore. Rescue. Bring them home.</div>
-        ${btn('Create account', 'go', { data: 'data-to="03"', cls: 'block' })}${btn('Sign in', 'go', { kind: 'outline', data: 'data-to="03A"', cls: 'block' })}
+        ${btn('Create account', 'go', { data: 'data-to="03"', cls: 'block' })}${btn('Sign in', 'go', { kind: 'outline', data: 'data-to="03A"', cls: 'block' })}${googleBtn()}
         <div class="foot">Single player &nbsp;•&nbsp; Landscape experience</div></div>`,
     },
 
@@ -176,7 +180,7 @@ export function createScreens() {
           ${field({ name: 'pw2', label: 'Confirm password', type: 'password', placeholder: 'Confirm your password', eye: true, auto: 'new-password' })}
           <div class="m-alert" id="f-alert" hidden></div>
           <div class="actions">${btn('Create account', null, { type: 'submit', cls: 'block' })}</div>
-        </form>
+        </form>${googleBtn()}
         <div class="foot2"><span>Already registered? <button class="m-link" data-act="go" data-to="03A">Sign in</button></span><i class="sep"></i><button class="m-link muted" data-act="go" data-to="03C">Forgot password?</button></div></div>`,
     },
 
@@ -190,7 +194,7 @@ export function createScreens() {
           ${field({ name: 'pw', label: 'Password', type: 'password', placeholder: 'Enter your password', icon: I.lock, eye: true, auto: 'current-password' })}
           <div class="m-alert" id="f-alert" hidden></div>
           <div class="actions">${btn('Sign in', null, { type: 'submit', cls: 'block' })}</div>
-        </form>
+        </form>${googleBtn()}
         <div class="foot2"><button class="m-link muted" data-act="go" data-to="03C">Forgot password?</button></div><hr class="m-rule">
         <div class="foot2"><span>Don't have an account? <button class="m-link" data-act="go" data-to="03">Create account</button></span></div>
         <div class="foot2">${btn('Back', 'go', { kind: 'outline', cls: 'small', icon: I.arrowL, data: 'data-to="02"' })}</div></div>`,
@@ -650,6 +654,14 @@ export function createScreens() {
       });
     },
     changeEmail() { auth.changeEmail(S.email); show('03'); },
+    async google(b) {
+      await busy(b, 'Opening Google…', async () => {
+        try { signedIn(await auth.signInWithGoogle()); } catch (e) {
+          if (e.code === 'cancelled') return;
+          if ($('#f-alert')) alertBox('#f-alert', esc(e.message)); else toast(e.message, true);
+        }
+      });
+    },
     openMail(b) {
       const mail = auth.latestMail(S.email, b.dataset.kind);
       if (!mail) { sheet(`<h2 class="m-title">Test inbox</h2><p>No email was sent to ${esc(S.email)}${b.dataset.kind === 'reset' ? ' (there may be no account with this address)' : ''}.</p><div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`); return; }

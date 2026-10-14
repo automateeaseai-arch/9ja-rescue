@@ -66,6 +66,8 @@ function sendMail(to, kind, token) {
 
 const device = {
   provider: 'device',
+  canGoogle: false,
+  async signInWithGoogle() { throw new AuthError('setup', 'Google sign-in needs the online version of the game.'); },
   knownDevice() { try { return !!localStorage.getItem(KEY); } catch { return false; } },
 
   current() {
@@ -233,6 +235,7 @@ let started = null;
 const call = (name) => (...a) => impl[name](...a);
 export const auth = {
   get provider() { return impl.provider; },
+  get canGoogle() { return !!impl.canGoogle; },
   init() {
     started ??= ONLINE
       ? import('./auth-firebase.js').then((m) => m.createFirebaseAuth()).then((f) => { impl = f; })
@@ -241,4 +244,4 @@ export const auth = {
   },
 };
 for (const k of ['knownDevice', 'current', 'signUp', 'resendVerification', 'checkVerified', 'verifyLink', 'changeEmail',
-  'signIn', 'signOut', 'requestReset', 'checkResetLink', 'resetPassword', 'latestMail', '_deleteMe']) auth[k] = call(k);
+  'signIn', 'signInWithGoogle', 'signOut', 'requestReset', 'checkResetLink', 'resetPassword', 'latestMail', '_deleteMe']) auth[k] = call(k);

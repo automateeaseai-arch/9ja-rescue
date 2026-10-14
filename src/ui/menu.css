@@ -334,3 +334,8 @@ body.in-menu { touch-action: manipulation; }
 .panel-screen .panel button.gold { background: linear-gradient(180deg, #ffd765, #f0b733 55%, #d99a1c); color: #1a1406; border-color: transparent; }
 .m-mute { background: rgba(10,25,18,.72); }
 .m-mute svg { width: 1.5rem; height: 1.5rem; }
+/* Continue with Google: white button with the G mark (Google's sign-in style). */
+.m-btn.google { background: #fff; color: #1f1f1f; border: 1px solid #dadce0; box-shadow: 0 .2rem .6rem rgba(0,0,0,.3); }
+.m-btn.google .g-mark { width: 1.25rem; height: 1.25rem; flex: none; }
+.m-or { display: flex; align-items: center; gap: .6rem; margin: .55rem 0; color: rgba(240,240,230,.75); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+.m-or::before, .m-or::after { content: ""; flex: 1; height: 1px; background: rgba(240,240,230,.3); }
