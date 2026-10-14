@@ -8,6 +8,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$(mktemp -d)"
 cd "$ROOT"
 npx vite build --outDir "$OUT" --emptyOutDir
+# Offline copy (public/sw.js): a new code version each deploy; the files
+# version changes only when a model, picture or sound changes.
+FILES_V="$(cd public && find models ui sounds -type f -print0 | sort -z | xargs -0 sha1sum | sha1sum | cut -c1-10)"
+sed -i "s/__BUILD__/$(date +%s)/; s/__FILES__/$FILES_V/" "$OUT/sw.js"
 touch "$OUT/.nojekyll"   # serve files as they are (no Jekyll processing)
 echo "9jarescue.app" > "$OUT/CNAME"   # the owner's own web address (bought 14 Oct)
 SRC="$(git rev-parse --short HEAD)"

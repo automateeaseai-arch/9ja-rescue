@@ -44,7 +44,8 @@ const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // models are
 // Running total of bytes downloaded, shown on the loading screen.
 export const downloadStats = { bytes: 0 };
 
-// Fetch with one retry. A download is only abandoned if no data arrives for
+// Fetch with up to three retries (after 2, 5 and 10 s; owner, 14 Oct: loading
+// sometimes stalled). A download is only abandoned if no data arrives for
 // 30 s, so slow but steady phone connections are never cut off.
 async function fetchWithRetry(url, as) {
   for (let attempt = 0; ; attempt++) {
@@ -67,7 +68,8 @@ async function fetchWithRetry(url, as) {
       const blob = new Blob(chunks);
       return as === 'text' ? await blob.text() : await blob.arrayBuffer();
     } catch (err) {
-      if (attempt >= 1) throw new Error(`Could not download ${url.split('/').pop()} (${err.message})`);
+      if (attempt >= 3) throw new Error(`Could not download ${url.split('/').pop()} (${err.message})`);
+      await new Promise((ok) => setTimeout(ok, [2000, 5000, 10000][attempt]));
     } finally {
       clearTimeout(timer);
     }

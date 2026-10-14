@@ -104,9 +104,13 @@ River Valley (south of the savanna, reached by the road over the escarpment): ra
 - The JS bundle is 2.7 MB, mostly the physics engine; shrinking it would speed up the first load.
 - The Wiry Civilian Scout reference (role unconfirmed) wasn't modelled.
 
+## Loading (14 Oct)
+- **Offline copy** (`public/sw.js`, service worker; web build only, not the dev server or the claude.ai copy): the page is fetched fresh first (4 s, else the saved copy); code (`/assets/`) and models, pictures, sounds are served from the phone's storage after the first visit. `deploy-pages.sh` fills in `__BUILD__` (new code cache each deploy) and `__FILES__` (hash of public/models, ui, sounds: the files cache is re-downloaded only when one of them changes). Tested on a local copy of the build: first visit downloads everything, the second comes from the phone's copy (menu in about half the time), and a reload with no connection reaches the menu.
+- Downloads retry three times (after 2, 5, 10 s) before giving up.
+
 ## Owner asked to be reminded later (14 Oct)
 - **Music:** menu, exploring and fighting tracks (owner will upload MP3s; Pixabay Music suggested).
-- **Faster loading:** start playing sooner, load the rest in the background.
+- **Faster loading:** the offline copy is done; still open: start playing sooner, load the rest in the background, shrink the 3 MB code.
 - **Install as an app:** home-screen icon, full screen (web app manifest).
 
 ## Possible next steps (only when the owner asks)
