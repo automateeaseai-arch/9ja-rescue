@@ -104,6 +104,11 @@ River Valley (south of the savanna, reached by the road over the escarpment): ra
 - The JS bundle is 2.7 MB, mostly the physics engine; shrinking it would speed up the first load.
 - The Wiry Civilian Scout reference (role unconfirmed) wasn't modelled.
 
+## Owner asked to be reminded later (14 Oct)
+- **Music:** menu, exploring and fighting tracks (owner will upload MP3s; Pixabay Music suggested).
+- **Faster loading:** start playing sooner, load the rest in the background.
+- **Install as an app:** home-screen icon, full screen (web app manifest).
+
 ## Possible next steps (only when the owner asks)
 1. Free (code): settings, an online account service (e.g. Firebase) when the owner sets one up, guards hearing gunshots, a road for the van, hostage colliders.
 2. After credits renew: separate rifle and cutlass props (stops welded-rifle stretching), jump/kick/cutlass animations (3 credits each, shared by all), Middle Belt and Southern environment pieces from the owner's reference images.
