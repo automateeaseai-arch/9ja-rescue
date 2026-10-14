@@ -90,6 +90,10 @@ export const cloud = {
     return state;
   },
 
+  // For tests: read or delete a player record directly.
+  async _get(id) { return (await fs.getDoc(docFor(id))).data(); },
+  async _delete() { const m = await import('firebase/firestore/lite'); await m.deleteDoc(docFor(currentUser())); },
+
   // Send anything waiting now (before signing out).
   async flush() { clearTimeout(timer); await push(); if (pushing) await pushing; },
 };

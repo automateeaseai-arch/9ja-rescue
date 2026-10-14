@@ -161,6 +161,7 @@ export async function createFirebaseAuth() {
     latestMail() { return null; },
 
     // For tests: remove the signed-in account.
+    _uid() { return me()?.uid ?? null; },
     async _deleteMe() { const u = me(); if (u) await deleteUser(u); },
   };
 }

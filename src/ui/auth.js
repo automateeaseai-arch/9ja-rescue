@@ -245,4 +245,4 @@ export const auth = {
   },
 };
 for (const k of ['knownDevice', 'current', 'signUp', 'resendVerification', 'checkVerified', 'verifyLink', 'changeEmail',
-  'signIn', 'signInWithGoogle', 'signOut', 'requestReset', 'checkResetLink', 'resetPassword', 'latestMail', '_deleteMe']) auth[k] = call(k);
+  'signIn', 'signInWithGoogle', 'signOut', 'requestReset', 'checkResetLink', 'resetPassword', 'latestMail', '_deleteMe', '_uid']) auth[k] = call(k);
