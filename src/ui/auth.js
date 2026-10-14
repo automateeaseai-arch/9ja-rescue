@@ -236,6 +236,7 @@ const call = (name) => (...a) => impl[name](...a);
 export const auth = {
   get provider() { return impl.provider; },
   get canGoogle() { return !!impl.canGoogle; },
+  get app() { return impl.app ?? null; },
   init() {
     started ??= ONLINE
       ? import('./auth-firebase.js').then((m) => m.createFirebaseAuth()).then((f) => { impl = f; })

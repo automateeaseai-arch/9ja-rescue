@@ -18,6 +18,7 @@ import { logo } from './logo.js';
 import { RULES, ARRIVALS } from '../config.js';
 import { PERSONAS } from '../hostages.js';
 import { sound } from '../sound.js';
+import { cloud } from '../cloud.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Number(n || 0).toLocaleString('en-GB');
@@ -514,7 +515,7 @@ export function createScreens() {
   }
 
   async function afterSplash() {
-    try { await auth.init(); } catch (e) {
+    try { await auth.init(); await cloud.init(auth.app); } catch (e) {
       console.error(e);
       S.splash.error = 'Could not reach the account service. Check your internet connection.';
       paintSplash();
@@ -526,10 +527,15 @@ export function createScreens() {
     show(auth.knownDevice() ? '03A' : '02');
   }
 
-  function signedIn(u) {
+  async function signedIn(u) {
     S.user = u;
     S.email = u.email;
     setUser(u.uid);
+    // Bring this device up to date with the online save (newer copy wins).
+    if (cloud.enabled) {
+      if (S.id === '01') { S.splash.text = 'Loading your progress…'; paintSplash(); }
+      if ((await cloud.pull()) === 'offline') toast('No connection: playing with the progress saved on this phone. It will be saved online later.');
+    }
     S.game.mission.reloadAccount();
     S.setup = null;
     show('04');
@@ -714,7 +720,7 @@ export function createScreens() {
     },
     profile() {
       const a = account();
-      sheet(`<h2 class="m-title">Profile</h2><p class="m-sub">${esc(S.user.email)} • ${auth.provider === 'device' ? 'account on this device' : 'online account; progress saved on this device'}</p>
+      sheet(`<h2 class="m-title">Profile</h2><p class="m-sub">${esc(S.user.email)} • ${auth.provider === 'device' ? 'account on this device' : (cloud.state === 'synced' ? 'progress saved online' : cloud.state === 'syncing' ? 'saving online…' : 'progress on this phone; will save online when connected')}</p>
         <div class="m-stats"><span>Rescue Points (RP)</span><b>${fmt(a.rp)}</b><span>Mission Points (MP)</span><b>${fmt(a.missionPoints)}</b>
         <span>Missions completed</span><b>${fmt(a.missionsCompleted)}</b><span>Captives rescued</span><b>${fmt(a.captivesRescued)}</b>
         <span>Characters</span><b>${Chars.list().length} of ${Chars.SLOTS}</b></div>
@@ -730,7 +736,7 @@ export function createScreens() {
       if ($('.m-sheet')) actions.settings();
       else rerender();
     },
-    signOut() { auth.signOut(); setUser(null); S.user = null; S.setup = null; closeSheet(); show('03A', { notice: 'Signed out.' }); },
+    async signOut() { await cloud.flush().catch(() => {}); auth.signOut(); setUser(null); S.user = null; S.setup = null; closeSheet(); show('03A', { notice: 'Signed out.' }); },
 
     // Characters
     pick(b) { S.selected = b.dataset.id; rerender(); },

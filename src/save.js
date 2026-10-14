@@ -5,6 +5,12 @@
 // so related values (health with used kits, captives with boarding, the
 // reward with completion) always change together. Characters and mission
 // checkpoints are separate records, as the plan asks.
+//
+// Online copy (cloud.js, Firebase accounts only): every write is stamped with
+// the time and reported to `onChange`, which copies it to the player's
+// Firestore record; signing in fetches that record and keeps whichever copy
+// of each record is newer. This device's copy always stays, so the game still
+// plays without a connection.
 const ACCOUNT = '9ja.account.v1';
 const MISSION = '9ja.mission.v1';
 const CHARACTERS = '9ja.characters.v1';
@@ -13,6 +19,31 @@ const LEGACY_CLAIMED = '9ja.legacy.claimed';
 
 let uid = null;
 const key = (k) => `${k}:${uid ?? 'guest'}`;
+const STAMPS = '9ja.stamps.v1';
+export const RECORDS = { account: ACCOUNT, mission: MISSION, characters: CHARACTERS, draft: DRAFT };
+const nameOf = (k) => Object.keys(RECORDS).find((n) => RECORDS[n] === k);
+let onChange = null;   // (recordName) => void, set by cloud.js
+export function setOnChange(fn) { onChange = fn; }
+export function stamps() { return read(key(STAMPS)) ?? {}; }
+function stamp(k, t = Date.now()) {
+  const n = nameOf(k);
+  if (!n || !uid) return;
+  const s = stamps();
+  s[n] = t;
+  try { localStorage.setItem(key(STAMPS), JSON.stringify(s)); } catch { /* ignore */ }
+  onChange?.(n);
+}
+// Raw access for the online copy: the stored text of a record (null = none).
+export function readRaw(name) { try { return localStorage.getItem(key(RECORDS[name])); } catch { return null; } }
+export function writeRaw(name, text, t) {
+  try {
+    if (text == null) localStorage.removeItem(key(RECORDS[name]));
+    else localStorage.setItem(key(RECORDS[name]), text);
+    const s = stamps();
+    s[name] = t;
+    localStorage.setItem(key(STAMPS), JSON.stringify(s));
+  } catch (err) { console.error(err); }
+}
 
 function read(k) {
   try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; }
@@ -22,6 +53,7 @@ function write(k, value) {
   try {
     localStorage.setItem(k, JSON.stringify(value));
     failed = false;
+    stamp(k.slice(0, k.lastIndexOf(':')));
     return true;
   } catch (err) {
     console.error(err);
@@ -65,10 +97,10 @@ export function loadAccount() {
 export const saveAccount = (a) => write(key(ACCOUNT), a);
 export const loadMission = () => read(key(MISSION));
 export const saveMission = (m) => write(key(MISSION), m);
-export function clearMission() { try { localStorage.removeItem(key(MISSION)); } catch { /* ignore */ } }
+export function clearMission() { try { localStorage.removeItem(key(MISSION)); stamp(MISSION); } catch { /* ignore */ } }
 export const loadCharacters = () => read(key(CHARACTERS)) ?? [];
 export const saveCharacters = (list) => write(key(CHARACTERS), list);
 export const loadDraft = () => read(key(DRAFT));
 export const saveDraft = (d) => write(key(DRAFT), d);
-export function clearDraft() { try { localStorage.removeItem(key(DRAFT)); } catch { /* ignore */ } }
+export function clearDraft() { try { localStorage.removeItem(key(DRAFT)); stamp(DRAFT); } catch { /* ignore */ } }
 export const saveFailed = () => failed;

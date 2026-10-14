@@ -60,6 +60,7 @@ export async function createFirebaseAuth() {
 
   return {
     provider: 'firebase',
+    app,   // shared with the online save (cloud.js)
     knownDevice() { try { return !!localStorage.getItem(SEEN); } catch { return false; } },
 
     current() { const u = me(); return u && u.emailVerified ? out(u) : null; },
