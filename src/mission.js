@@ -425,7 +425,6 @@ export function createMission(ctx) {
     if (u?.id && !collected.has(`drop-${u.id}`)) {
       collected.add(`drop-${u.id}`);
       combat.addAmmo(RULES.ammoDrop);
-      showTip(`+${RULES.ammoDrop} bullets from the defeated hostile`, 2);
     }
     later(0, checkpoint);
   }
