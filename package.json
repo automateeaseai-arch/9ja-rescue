@@ -16,6 +16,7 @@
   "homepage": "https://github.com/automateeaseai-arch/9ja-rescue#readme",
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "firebase": "12.19.0",
     "three": "^0.170.0"
   },
   "devDependencies": {

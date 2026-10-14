@@ -207,15 +207,17 @@ export function createScreens() {
         <div class="actions">${btn("I've verified my email", 'checkVerified', { cls: 'block' })}</div>
         <div class="actions" style="margin-top:.6rem">${btn('Resend email', 'resend', { kind: 'outline', cls: 'block' })}</div>
         <div class="foot2"><button class="m-link muted" data-act="changeEmail">Change email</button></div>
-        <div class="m-devmail">No email service is connected yet, so emails stay on this device. <button class="m-link" data-act="openMail" data-kind="verify">Open the test email</button></div></div>`,
+        ${auth.provider === 'device' ? '<div class="m-devmail">No email service is connected in this copy, so emails stay on this device. <button class="m-link" data-act="openMail" data-kind="verify">Open the test email</button></div>' : '<div class="m-devmail">Can\'t find it? Check your spam or junk folder.</div>'}</div>`,
     },
 
     // 03C Password Recovery
     '03C': {
       bg: '03C', pos: 'left center', cls: 'sAuth',
       html: () => `<div class="m-panel m-side scroll">${logo()}<hr class="m-rule"><h1 class="m-title">Reset password</h1>
-        ${S.params.sent ? `<div class="m-alert ok">If an account exists for <b>${esc(S.email)}</b>, a reset link is on its way. It works once and lasts 30 minutes.</div>
-          <div class="m-devmail">No email service is connected yet. <button class="m-link" data-act="openMail" data-kind="reset">Open the test email</button></div>`
+        ${S.params.sent ? (auth.provider === 'device' ? `<div class="m-alert ok">If an account exists for <b>${esc(S.email)}</b>, a reset link is on its way. It works once and lasts 30 minutes.</div>
+          <div class="m-devmail">No email service is connected in this copy. <button class="m-link" data-act="openMail" data-kind="reset">Open the test email</button></div>`
+          : `<div class="m-alert ok">If an account exists for <b>${esc(S.email)}</b>, a reset link is on its way. Open it to choose a new password, then come back and sign in.</div>
+          <div class="m-devmail">Can't find it? Check your spam or junk folder.</div>`)
           : `<p class="m-sub">Enter your account email.</p>
         <form data-submit="reset" novalidate>
           ${field({ name: 'email', label: 'Email address', type: 'email', placeholder: 'Enter your email address', icon: I.mail, value: S.email, auto: 'email' })}
@@ -507,11 +509,17 @@ export function createScreens() {
     }
   }
 
-  function afterSplash() {
+  async function afterSplash() {
+    try { await auth.init(); } catch (e) {
+      console.error(e);
+      S.splash.error = 'Could not reach the account service. Check your internet connection.';
+      paintSplash();
+      return;
+    }
     if (handleLink()) return;
     const u = auth.current();
     if (u) return signedIn(u);
-    show(localStorage.getItem('9ja.auth.v1') ? '03A' : '02');
+    show(auth.knownDevice() ? '03A' : '02');
   }
 
   function signedIn(u) {
@@ -694,7 +702,7 @@ export function createScreens() {
     },
     profile() {
       const a = account();
-      sheet(`<h2 class="m-title">Profile</h2><p class="m-sub">${esc(S.user.email)} • saved on this device</p>
+      sheet(`<h2 class="m-title">Profile</h2><p class="m-sub">${esc(S.user.email)} • ${auth.provider === 'device' ? 'account on this device' : 'online account; progress saved on this device'}</p>
         <div class="m-stats"><span>Rescue Points (RP)</span><b>${fmt(a.rp)}</b><span>Mission Points (MP)</span><b>${fmt(a.missionPoints)}</b>
         <span>Missions completed</span><b>${fmt(a.missionsCompleted)}</b><span>Captives rescued</span><b>${fmt(a.captivesRescued)}</b>
         <span>Characters</span><b>${Chars.list().length} of ${Chars.SLOTS}</b></div>

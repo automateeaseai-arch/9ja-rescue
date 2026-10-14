@@ -6,7 +6,7 @@
 set -e
 OUT="$1"
 rm -rf "$OUT"
-VITE_MODELS_AS_TEXT=1 npx vite build --outDir "$OUT" --emptyOutDir
+VITE_AUTH=device VITE_MODELS_AS_TEXT=1 npx vite build --outDir "$OUT" --emptyOutDir
 cd "$OUT/models"
 for f in $(find . -name "*.glb"); do base64 -w0 "$f" > "$f.b64.txt"; rm "$f"; done
 cd ..

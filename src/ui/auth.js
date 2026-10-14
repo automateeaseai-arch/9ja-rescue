@@ -1,6 +1,11 @@
 // Account access: sign-up, email verification, sign-in and password reset.
 //
-// Device-only provider (owner's choice until an online service is set up):
+// Two providers with the same calls. Online (default): Firebase
+// Authentication sends real emails (auth-firebase.js). The claude.ai share
+// copy can't reach other websites, so it is built with VITE_AUTH=device and
+// keeps the device-only provider below.
+//
+// Device-only provider (the first version, before Firebase was set up):
 // accounts live in this browser's storage and no real email is sent. Each
 // "email" (verification or reset link) goes to a local outbox that the
 // screens can open, so the flows behave as they will online: verification is
@@ -59,8 +64,9 @@ function sendMail(to, kind, token) {
   localStorage.setItem(OUTBOX, JSON.stringify(box.slice(0, 20)));
 }
 
-export const auth = {
+const device = {
   provider: 'device',
+  knownDevice() { try { return !!localStorage.getItem(KEY); } catch { return false; } },
 
   current() {
     const d = load();
@@ -218,3 +224,21 @@ export const auth = {
     return box.find((m) => norm(m.to) === norm(email) && m.kind === kind) ?? null;
   },
 };
+
+// The provider in use. `init()` runs once before the first screen that needs
+// it (the online provider loads Firebase and restores the saved session).
+const ONLINE = import.meta.env.VITE_AUTH !== 'device';
+let impl = device;
+let started = null;
+const call = (name) => (...a) => impl[name](...a);
+export const auth = {
+  get provider() { return impl.provider; },
+  init() {
+    started ??= ONLINE
+      ? import('./auth-firebase.js').then((m) => m.createFirebaseAuth()).then((f) => { impl = f; })
+      : Promise.resolve();
+    return started;
+  },
+};
+for (const k of ['knownDevice', 'current', 'signUp', 'resendVerification', 'checkVerified', 'verifyLink', 'changeEmail',
+  'signIn', 'signOut', 'requestReset', 'checkResetLink', 'resetPassword', 'latestMail', '_deleteMe']) auth[k] = call(k);
