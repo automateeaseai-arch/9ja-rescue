@@ -22,6 +22,7 @@
 // loadout, show the briefing from a saved draft, then start or continue here.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { track } from './analytics.js';
 import { RULES, SITES, ARRIVALS, missionName, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
 import { PERSONAS } from './hostages.js';
@@ -360,6 +361,7 @@ export function createMission(ctx) {
     const entry = lo.air && inv[lo.air] > 0 ? lo.air : 'ground';
     const g = Math.min(RULES.maxGrenades, lo.grenades, inv.grenade);
     const vehicle = lo.vehicle && inv[lo.vehicle] ? lo.vehicle : null;
+    track('mission_start', { mission: missionName(d.setup).name, site: d.setup.site, entry });
     account.captiveAlternation++;
     // Remembered so the next missions use another site and other ways in.
     const rc = account.recent ?? {};
@@ -474,6 +476,7 @@ export function createMission(ctx) {
     for (const c of list) c.state = 'departed';
     stage = 'COMPLETED';
     finished = true;
+    track('mission_complete', { mission: missionName(setup).name, site: setup.site, captives: list.length });
     sound.ui('achievement', 0.7);
     const rp = list.length * RULES.rpPerCaptive;
     const first = !account.completed.includes(setup.id);

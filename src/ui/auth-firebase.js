@@ -11,7 +11,9 @@ import {
   sendEmailVerification, sendPasswordResetEmail, signOut, deleteUser, reload,
   GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
 } from 'firebase/auth';
+import { getAnalytics, isSupported, logEvent } from 'firebase/analytics';
 import { AuthError, emailProblem, passwordProblem } from './auth.js';
+import { setTracker } from '../analytics.js';
 
 const CONFIG = {
   apiKey: 'AIzaSyCIznaxc92v2b0s_luJkyjq8EMVgH-FWHk',
@@ -20,6 +22,7 @@ const CONFIG = {
   storageBucket: 'ja-rescue.firebasestorage.app',
   messagingSenderId: '787109971207',
   appId: '1:787109971207:web:2d68223460c10c468271a2',
+  measurementId: 'G-XWS97ZC745',
 };
 // Google's sign-in window names the sign-in address. On the game's own site
 // it opens from auth.9jarescue.app (Firebase Hosting custom domain), so the
@@ -66,6 +69,10 @@ export async function createFirebaseAuth() {
   const app = initializeApp({ ...CONFIG, authDomain: await pickAuthDomain() });
   const fa = getAuth(app);
   fa.useDeviceLanguage();
+  // Visitors, live users and mission events in Firebase → Analytics (the game's own site only).
+  if (/(^|\.)9jarescue\.app$/.test(location.hostname)) {
+    isSupported().then((ok) => { if (ok) { const an = getAnalytics(app); setTracker((n, p) => logEvent(an, n, p)); } }).catch(() => {});
+  }
   // Wait for the saved session (if any) before the screens decide where to start.
   await new Promise((ok) => { const off = onAuthStateChanged(fa, () => { off(); ok(); }); });
   // Coming back from a Google sign-in page (used when the pop-up was blocked).
