@@ -15,7 +15,7 @@ import { setUser, saveAccount, saveFailed } from '../save.js';
 import * as Chars from './characters.js';
 import { showPreview, hidePreview, setPreviewSkin } from './preview.js';
 import { logo } from './logo.js';
-import { RULES, ARRIVALS } from '../config.js';
+import { RULES, ARRIVALS, missionName } from '../config.js';
 import { PERSONAS } from '../hostages.js';
 import { sound } from '../sound.js';
 import { cloud } from '../cloud.js';
@@ -261,7 +261,7 @@ export function createScreens() {
         return `<div class="head">${logo()}<div class="welcome">Welcome${c ? ' back' : ''},<b>${esc(name)}</b></div></div>
         <div class="top-r">${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
         <div class="missions">
-          ${saved ? btn(`Continue mission<small>${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
+          ${saved ? btn(`Continue mission<small>${esc(saved.name)} • ${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
           ${btn('Test: glider jump', 'testGlider', { kind: 'outline', cls: 'small', icon: I.plane })}
           ${saveFailed() ? '<div class="m-alert">Saving failed on this device: progress may not be kept.</div>' : ''}
@@ -451,7 +451,7 @@ export function createScreens() {
     const air = a.loadout.air && a.inventory[a.loadout.air] > 0 ? a.loadout.air : null;
     const vehicle = a.loadout.vehicle && a.inventory[a.loadout.vehicle] ? a.loadout.vehicle : null;
     const site = S.game.mission.siteInfo(s.site ?? 'compound');
-    return { arr, caps, air, vehicle, site, n: caps.length, c: charOf() };
+    return { arr, caps, air, vehicle, site, n: caps.length, c: charOf(), title: missionName(s) };
   }
   function briefBg() {
     const { arr, air } = briefData();
@@ -462,7 +462,7 @@ export function createScreens() {
     const plural = d.n === 1 ? 'captive' : 'captives';
     const faces = `<div class="faces">${d.caps.map((c) => `<div class="face" style="background-image:url('${c.pic}')"><span>${esc(c.name)}</span></div>`).join('')}</div>`;
     const body = [
-      `<h3>Location</h3><p>A fictional river valley in Nigeria: granite kopjes and savanna to the north, rainforest, terraced villages and wetlands to the south, all one connected region.</p>
+      `<h3>Location</h3><p><b>${esc(d.title.name)}</b> (${esc(d.title.means)}). A fictional region of Nigeria: granite kopjes and savanna to the north, rainforest, terraced villages and wetlands to the south, all one connected land.</p>
        <p>Your arrival point: <b>${esc(d.arr.name)}</b>, on ${esc(d.arr.area)}.</p>`,
       `<h3>The kidnapping</h3><p>Armed men stopped travellers on the valley road and took ${d.n === 1 ? 'one person' : `${d.n} people`} to a hidden site.</p>${faces}
        <p>${d.caps.map((c) => esc(c.name)).join(' and ')} ${d.n === 1 ? 'is' : 'are'} waiting for you.</p>`,
@@ -477,7 +477,7 @@ export function createScreens() {
     ][p];
     const drone = p === 2 ? `<div class="drone" style="background-image:url('${BG('drone')}')"><div class="tag">DRONE IMAGE • LIVE</div><div class="ring"><b>SUSPECTED CAPTIVE SITE</b></div></div>` : '';
     return `<div class="m-logo-tl small">${logo()}</div>${drone}
-      <div class="m-panel brief"><div class="kicker">Briefing ${p + 1} of 5</div><h1 class="m-title">Operation River Valley</h1>
+      <div class="m-panel brief"><div class="kicker">Briefing ${p + 1} of 5</div><h1 class="m-title">${esc(d.title.name)}</h1>
         <div class="body">${body}</div>
         <div class="navrow"><div class="m-dots">${[0, 1, 2, 3, 4].map((i) => `<button data-act="briefTo" data-v="${i}" class="${i === p ? 'on' : ''}" aria-label="Briefing panel ${i + 1}"></button>`).join('')}</div>
           ${last ? btn('Begin mission', 'begin', { right: I.next }) : btn('Next', 'briefNext', { right: I.next })}</div></div>
@@ -913,7 +913,8 @@ export function createScreens() {
     const summary = kind === 'continue' ? g.mission.savedSummary() : null;
     const n = kind === 'continue' ? summary?.captives : S.setup?.captives.length;
     const place = kind === 'continue' ? summary?.place : ARRIVALS[S.setup?.arrival.index]?.name;
-    $('#ml-where').textContent = `${place ?? 'River Valley'} • ${n ?? 1} captive${n === 1 ? '' : 's'}`;
+    const title = kind === 'continue' ? summary?.name : S.setup ? missionName(S.setup).name : null;
+    $('#ml-where').textContent = `${title ? `${title} • ` : ''}${place ?? 'Savanna'} • ${n ?? 1} captive${n === 1 ? '' : 's'}`;
     let ti = 0;
     const tipTimer = setInterval(() => { if (tip.isConnected) tip.textContent = TIPS[++ti % TIPS.length]; }, 4000);
     const onProgress = (f, text) => {

@@ -22,7 +22,7 @@
 // loadout, show the briefing from a saved draft, then start or continue here.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { RULES, SITES, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
+import { RULES, SITES, ARRIVALS, missionName, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
 import { PERSONAS } from './hostages.js';
 import { sound } from './sound.js';
@@ -400,7 +400,7 @@ export function createMission(ctx) {
     if (!m) return null;
     const st = m.cp?.stage ?? 'ARRIVAL';
     const text = { ARRIVAL: 'Arrival', EXPLORE: 'Collecting supplies', CLEAR_SITE: 'Clearing the captive site', RESCUE: 'Rescue in progress', ESCORT: 'Escort to DSS' }[st] ?? 'In progress';
-    return { stage: st, text, place: ARRIVALS[m.setup.arrival.index]?.name ?? 'River Valley', captives: m.setup.captives.length, character: m.setup.character ?? null };
+    return { stage: st, text, name: missionName(m.setup).name, place: ARRIVALS[m.setup.arrival.index]?.name ?? 'Savanna', captives: m.setup.captives.length, character: m.setup.character ?? null };
   }
   // Continue: same seed, character, place and progress; no briefing replay.
   function continueSaved(onProgress) {

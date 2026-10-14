@@ -151,3 +151,27 @@ export const AMMO_SPOTS = [
   { at: [8, -8] }, { at: 'esc300a' }, { valley: [100, -112] }, { valley: [36, -60] },
   { valley: [8, 28] }, { valley: [-76, -40] },
 ];
+
+// Mission names (owner, 14 Oct: "creative… feels Nigerian"): a place from the
+// site's part of the country plus a strong animal in the local language.
+// Savanna camp missions take northern places and Hausa words; valley compound
+// missions take southern places and Yoruba or Igbo words.
+export const MISSION_NAMES = {
+  camp: {
+    places: ['Sambisa', 'Kano', 'Zaria', 'Jos', 'Mambilla', 'Yankari', 'Gashaka', 'Zuma', 'Kaduna', 'Bauchi', 'Katsina', 'Mubi'],
+    words: [['Zaki', 'lion'], ['Mikiya', 'eagle'], ['Damisa', 'leopard'], ['Giwa', 'elephant'], ['Kura', 'hyena'], ['Shaho', 'hawk'], ['Harmattan', 'dry wind']],
+  },
+  compound: {
+    places: ['Lokoja', 'Obudu', 'Idanre', 'Ikogosi', 'Erin-Ijesha', 'Oguta', 'Osun', 'Oke-Ado', 'Ogbunike', 'Awhum', 'Calabar', 'Benue'],
+    words: [['Ekun', 'leopard'], ['Kiniun', 'lion'], ['Idì', 'eagle'], ['Erin', 'elephant'], ['Agu', 'leopard'], ['Ugo', 'eagle'], ['Odum', 'lion']],
+  },
+};
+
+// The mission's name, fixed by its seed and site, e.g. "Mission Kano Zaki".
+export function missionName(setup) {
+  const n = MISSION_NAMES[setup?.site] ?? MISSION_NAMES.compound;
+  const seed = setup?.seed ?? 0;
+  const place = n.places[seed % n.places.length];
+  const [word, means] = n.words[Math.floor(seed / n.places.length) % n.words.length];
+  return { name: `Mission ${place} ${word}`, means };
+}

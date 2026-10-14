@@ -106,6 +106,7 @@ const CROUCH_SPEED = 1.2;
 const SWIM_SPEED = 1.1, SWIM_FAST = 2.0;
 const SWIM_DEPTH = 1.25;     // feet below the water surface while swimming
 const CLIMB_SPEED = 0.9;     // metres per second up a wall or rock
+const MANTLE_SPEED = 2.6;    // the last push up once the hands are over the top
 const CLIMB_HANDS = 1.2;     // feet this far below the top: the hands are over the edge and stop
 const CLIMB_MIN = 1.0, CLIMB_MAX = 3.8; // ledge heights (above the feet) that can be climbed
 const PUNCH_RATE = 1.6;      // jab clip playback speed
@@ -414,12 +415,14 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     if (state.mode === 'climb') {
       // Up the wall, then step over onto the top.
       if (climb.over === 0) {
-        next.y = Math.min(climb.top + FOOT_OFFSET + 0.05, p.y + CLIMB_SPEED * dt);
+        // Hands over the edge: a quick push up instead of a slow frozen rise (owner, 14 Oct).
+        const rise = climb.below < CLIMB_HANDS ? MANTLE_SPEED : CLIMB_SPEED;
+        next.y = Math.min(climb.top + FOOT_OFFSET + 0.05, p.y + rise * dt);
         climb.below = climb.top - (next.y - FOOT_OFFSET);   // how far the feet are below the top
         if (next.y >= climb.top + FOOT_OFFSET + 0.05) climb.over = 0.001;
       } else {
         climb.over += dt;
-        const step = Math.min(1.6 * dt, climb.dist - climb.moved);
+        const step = Math.min(2.6 * dt, climb.dist - climb.moved);
         climb.moved += step;
         next.x += climb.dir.x * step;
         next.z += climb.dir.z * step;
@@ -547,6 +550,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       const step = climb.over ? Math.min(1, 0.4 + climb.over / 0.35) : up * 0.4;
       W.climb = 1 - step;
       W.crouchWalk = step;
+      actions.crouchWalk.timeScale = 1.8;
     } else if (state.mode === 'swim') {
       W.swimIdle = 1 - swimMove;
       W.swimForward = swimMove;

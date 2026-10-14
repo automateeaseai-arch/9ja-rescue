@@ -426,6 +426,10 @@ async function start() {
     if (air === 'plane' || free < camDist) camDist = free;
     else camDist = THREE.MathUtils.damp(camDist, free, 3, dt || 1);
     camera.position.copy(camTarget).addScaledVector(camOffset, camDist);
+    // Never below a water surface: seen from underneath the water vanishes
+    // (owner, 14 Oct: "the water suddenly disappears" while swimming).
+    const wcam = waterAt(camera.position.x, camera.position.z);
+    if (wcam && camera.position.y < wcam.level + 0.35) camera.position.y = wcam.level + 0.35;
     // Squeezed right up to the player (backed into a corner): hide them so
     // their own body doesn't fill the view (layer 1 is not drawn).
     const close = !car && !air && camDist < 0.9;
