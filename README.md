@@ -143,3 +143,15 @@ Meshy text-to-3D (preview + refine, 30 credits each), compressed with `tools/opt
 | Overgrown concrete wall | not used (geometry came out broken) | | `01a134bd-0ef1-7231-ba10-09513a2ba1c0`, `01a134bd-9770-7318-8631-13e7327d0598` | Compound walls are code-built instead |
 
 Total for this kit: 480 credits (16 × 30). Environment total with the six earlier pieces: 660 of the 700 ceiling.
+
+## Savanna landscape kit (14 Oct, 180 credits: 6 × 30, text-to-3D with PBR maps)
+Owner's cave, waterfall and village references. Placed by `src/savanna.js`; catalogue entries in `src/kit/catalogue.js` (`tint`, `lift` brighten the darker textures).
+
+| Piece | File | Size | Meshy tasks (preview, refine) | Used for |
+|---|---|---|---|---|
+| Granite inselberg dome | `public/models/sav/Granite_Inselberg.glb` | 501,984 B (SHA256 `33a1d8e2…6c3d`) | `01a13c24-0278-75de-a0b7-7cf19eba87be`, `01a13c25-cc1b-7046-ac66-0080965584b4` | Skyline hills and two climbable domes at the savanna edges (refs 8, 9) |
+| Granite boulder pile (asked as a walk-through shelter; came out solid) | `public/models/sav/Granite_Rock_Shelter.glb` | 480,288 B (SHA256 `00e02e58…a7db`) | `01a13c24-027c-70fc-8c51-11ffa1a8013f`, `01a13c25-8eaf-748d-8114-686cd4dc407c` | Rock outcrops / cover (refs 4, 5) |
+| Mossy river boulders | `public/models/sav/River_Boulders_Mossy.glb` | 281,124 B (SHA256 `7ab4bfcf…cd1d`) | `01a13c24-026f-7446-8d69-07431c467f70`, `01a13c25-2ef9-71d6-bab1-43373d116769` | River banks, plunge pool, gully bed (refs 1, 2, 6) |
+| Stepped dark rock ledge | `public/models/sav/Waterfall_Rock_Ledge.glb` | 513,408 B (SHA256 `ada3d28d…6dc8`) | `01a13c24-026e-7358-8afe-7ece547c9bbe`, `01a13c25-ac9c-7073-a0a1-552eef466b5e` | Savanna waterfall cliff (refs 3, 6, 7) |
+| Red laterite gully bank | `public/models/sav/Gully_Laterite_Bank.glb` | 534,976 B (SHA256 `1b5bf06b…ae2a`) | `01a13c24-029a-71a3-8522-6d94e190b67c`, `01a13c25-6e81-711a-a4b3-972f5a2632da` | Gully walls (east savanna) |
+| Painted round mud hut | `public/models/sav/Hut_Mud_Painted.glb` | 570,624 B (SHA256 `dfa827f1…4225`) | `01a13c24-0289-74c8-9fbd-afa2c801e2a9`, `01a13c26-aea1-70e5-9cfc-2d980f65d6ed` | Village edge, enterable (refs 8, 9) |

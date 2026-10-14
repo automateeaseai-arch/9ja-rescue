@@ -29,6 +29,14 @@ export const CATALOGUE = {
   Rainforest_Tree_Buttress: { file: 'valley/Rainforest_Tree_Buttress', scale: 4.2, collider: 'none', lod: 10 },
   Wooden_Cart: { file: 'valley/Wooden_Cart', scale: 1.6, collider: 'box', shrink: 0.9 },
   Dugout_Canoe: { file: 'valley/Dugout_Canoe', scale: [3, 1.6, 2], collider: 'none' },
+  // Savanna landscape kit (owner's cave, waterfall and village references, 14 Oct; PBR, 30 credits each)
+  // (`tint` multiplies the Meshy texture: these come with their own detail, so no rock shader.)
+  Granite_Inselberg: { file: 'sav/Granite_Inselberg', scale: 20, collider: 'trimesh', pbr: true, haze: 0.5, tint: [0.86, 0.85, 0.88] },
+  Granite_Rock_Shelter: { file: 'sav/Granite_Rock_Shelter', scale: 6, collider: 'box', shrink: 0.8, pbr: true, tint: [1.35, 1.25, 1.12], lod: 12 },
+  River_Boulders_Mossy: { file: 'sav/River_Boulders_Mossy', scale: 3, collider: 'box', shrink: 0.75, pbr: true, lift: 0.55, tint: [1.15, 1.1, 1.0], lod: 10 },
+  Waterfall_Rock_Ledge: { file: 'sav/Waterfall_Rock_Ledge', scale: 5, collider: 'box', shrink: 0.85, pbr: true, lift: 0.45, tint: [1.25, 1.12, 0.98], lod: 12 },
+  Gully_Laterite_Bank: { file: 'sav/Gully_Laterite_Bank', scale: 4, collider: 'none', pbr: true, tint: [0.66, 0.52, 0.46], lod: 10 },
+  Hut_Mud_Painted: { file: 'sav/Hut_Mud_Painted', scale: 2.6, collider: 'box', pbr: true, tint: [0.82, 0.8, 0.82], look: { grime: 0.3, moss: 0.05, streaks: 0.5 } },
   // Pieces from the savanna kit, reused here
   Boulder_Granite: { file: 'env/Boulder_Granite', scale: 1, collider: 'box', shrink: 1, rock: { tone: [1, 1, 1], moss: 0.15, lichen: 0.9 }, lod: 9 },
   House_MudBrick_TinRoof: { file: 'env/House_MudBrick_TinRoof', scale: 3.6, collider: 'box', shrink: 0.9, look: { grime: 0.4, moss: 0.05 } },
@@ -46,6 +54,17 @@ export async function loadKit(names) {
   await Promise.all(names.map(async (n) => {
     const def = CATALOGUE[n];
     const model = bakeModel(await loadGlb(`models/${def.file}.glb`));
+    // Meshy PBR pieces: no reflections to show metal, so keep them matte stone and clay.
+    if (def.pbr) for (const m of [model.mat].flat()) {
+      m.metalness = 0; m.metalnessMap = null;
+      if (def.tint) m.color.setRGB(...def.tint);
+      m.onBeforeCompile = (sh) => {
+        // lift: brightens very dark textures (gamma) without washing out the light parts.
+        if (def.lift) sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>\n diffuseColor.rgb = pow(max(diffuseColor.rgb, vec3(0.0)), vec3(${def.lift.toFixed(2)}));`);
+        // haze: skyline hills take only part of the scene fog, which would turn them white.
+        if (def.haze) sh.fragmentShader = sh.fragmentShader.replace('#include <fog_fragment>', `#ifdef USE_FOG\n gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, smoothstep(fogNear, fogFar, vFogDepth) * ${def.haze.toFixed(2)});\n #endif`);
+      };
+    }
     if (def.look) model.mat = weathered(model.mat, def.look);
     if (def.rock) model.mat = rockSurface(model.mat, def.rock);
     // Buildings get a real doorway and a room inside (doors.js).

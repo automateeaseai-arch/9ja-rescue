@@ -18,6 +18,7 @@ import { addFixedCollider } from '../world.js';
 // door: [x0, x1, top] opening in the room's front wall (z1, or +r).
 export const DOORWAYS = {
   Hut_Thatched_Round: { cut: [-0.2, 0.2, -0.05, 0.8, 0.5, 1.0], room: { r: 0.74, y: 0, top: 0.5, cone: 1.0, door: [-0.19, 0.19, 0.77] } },
+  Hut_Mud_Painted: { cut: [-0.21, 0.22, -0.05, 0.6, 0.5, 1.1], room: { r: 0.8, y: 0, top: 0.62, cone: 1.2, door: [-0.2, 0.21, 0.9] } },
   House_MudBrick_TinRoof: { cut: [-0.31, -0.03, -0.05, 0.72, 0.38, 0.62], room: { x0: -0.62, x1: 0.7, z0: -0.49, z1: 0.47, y: 0, top: 0.94, door: [-0.3, -0.04, 0.71] } },
   Stilt_House_Thatch: { cut: [-0.12, 0.15, 0.12, 0.56, 0.62, 0.9], room: { x0: -0.6, x1: 0.6, z0: -0.79, z1: 0.74, y: 0.165, top: 0.56, door: [-0.11, 0.14, 0.55] }, porch: true },
   Stilt_House_Tin: { cut: [-0.38, -0.1, 0.15, 0.63, 0.28, 0.52], room: { x0: -0.58, x1: 0.41, z0: -0.63, z1: 0.36, y: 0.2, top: 0.9, door: [-0.37, -0.11, 0.62] }, porch: true },

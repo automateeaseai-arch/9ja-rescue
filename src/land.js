@@ -64,8 +64,8 @@ export function createWorldHeight(valleyH) {
 
 const C = (h) => new THREE.Color(h);
 const PAL = {
-  savDry: C('#ddb06a'), savGrass: C('#a39a4c'), valGold: C('#b39a6c'), valGrass: C('#88874f'),
-  wildDry: C('#bea36c'), wildGrass: C('#949050'), road: C('#b8724a'), rock: C('#9a8e7c'), gravel: C('#958a77'),
+  savDry: C('#c4a560'), savGrass: C('#7e8a3a'), valGold: C('#b39a6c'), valGrass: C('#88874f'),
+  wildDry: C('#b39d62'), wildGrass: C('#7f8a40'), road: C('#b8724a'), rock: C('#9a8e7c'), gravel: C('#958a77'),
 };
 
 export function buildLand(scene, physics, { valleyH, phone = false }) {
@@ -150,7 +150,7 @@ export const valleyBlend = (z) => smooth(z, HS + 20, VALLEY_RECT.z0 + 80);
 // Light and haze for where the player is: warm and clear over the savanna,
 // softer and more humid in the valley, changing gradually in between.
 export function createAtmosphere({ scene, world, phone }) {
-  const sav = { fog: C('#f3dcb2'), near: 110, far: 320, hemi: 1.6, sun: 3.4, top: C('#3f8ee0'), horizon: C('#f5e1bc') };
+  const sav = { fog: C('#e4e2d4'), near: 140, far: 480, hemi: 1.6, sun: 3.4, top: C('#3f8ee0'), horizon: C('#ece4cc') };
   const val = { fog: C('#dfe2d8'), near: 70, far: 300, hemi: 1.25, sun: 3.1, top: C('#4a93dc'), horizon: C('#e9e7dc') };
   const u = world.sky.material.uniforms;
   return (playerPos, caveDim = 0) => {

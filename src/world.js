@@ -4,6 +4,8 @@
 // they can move with the wind at no generation cost.
 import * as THREE from 'three';
 import { addTreeShape } from './kit/crowns.js';
+import { terrainMaterial } from './kit/terrain.js';
+import { addSavanna } from './savanna.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { DOORWAYS, cutDoorway, interiorGeometry, interiorMaterial, addRoomColliders } from './kit/doors.js';
 import { loadGlb } from './player.js';
@@ -61,14 +63,56 @@ function rollingHills(x, z) {
     Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.7) * 0.9;
 }
 
-// Gentle rolling ground, flat where the village and the camp sit.
+// A dry erosion gully winding in from the east edge (owner, 14 Oct: "not
+// just flat land"): 3.8 m deep, a 4 m sandy bed and 35° red-earth walls.
+export const GULLY = [[175, -56], [150, -46], [128, -33], [110, -22], [92, -30], [76, -20], [60, -6]];
+const GULLY_LEN = GULLY.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - GULLY[i][0], p[1] - GULLY[i][1]), 0);
+export function gullyNear(x, z) {
+  let best = { d: 1e9, u: 0, i: 0 }, run = 0;
+  for (let i = 1; i < GULLY.length; i++) {
+    const [ax, az] = GULLY[i - 1], [bx, bz] = GULLY[i];
+    const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+    const t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (len * len), 0, 1);
+    const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+    if (d < best.d) best = { d, u: (run + t * len) / GULLY_LEN, i: i - 1 };
+    run += len;
+  }
+  return best;
+}
+export function gullyDepth(x, z) {
+  if (x < 45 || z < -80 || z > 20) return 0;
+  const g = gullyNear(x, z);
+  const wob = 1 + 0.25 * Math.sin(g.u * 37) + 0.12 * Math.sin(g.u * 91);
+  const ends = 1 - THREE.MathUtils.smoothstep(g.u, 0.8, 1);
+  return 3.8 * ends * (1 - THREE.MathUtils.smoothstep(g.d, 2.2 * wob, 7.6 * wob));
+}
+
+// The river drops off a rock step north of the village: a waterfall.
+export const FALLS = { z: -112, drop: 6 };
+function fallsStep(x, z) {
+  if (z > -90) return 0;
+  const across = 1 - THREE.MathUtils.smoothstep(Math.abs(x - riverX(z)), 26, 60);
+  const wide = 1 - across;
+  const step = 1 - THREE.MathUtils.smoothstep(z, FALLS.z - 2.5 - wide * 26, FALLS.z + 1.5 + wide * 12);
+  return FALLS.drop * step * (0.35 + 0.65 * across);
+}
+
+// Higher, broken hills towards the north, east and west edges.
+function edgeHills(x, z) {
+  const e = THREE.MathUtils.smoothstep(Math.max(Math.abs(x), -z), 100, 175) * (1 - THREE.MathUtils.smoothstep(z, 40, 110));
+  if (e <= 0) return 0;
+  return e * (6 + 4 * Math.sin(x * 0.043 + 1.1) * Math.cos(z * 0.037) + 2 * Math.sin(x * 0.12 - z * 0.09));
+}
+
+// Rolling ground, flat where the village and the camp sit.
 export function groundHeight(x, z) {
   const village = THREE.MathUtils.smoothstep(Math.hypot(x, z), 22, 50);
   const camp = THREE.MathUtils.smoothstep(Math.hypot(x - CAMP.x, z - CAMP.z), CAMP.r, CAMP.r + 22);
   const dss = THREE.MathUtils.smoothstep(Math.hypot(x - DSS.x, z - DSS.z), DSS.r, DSS.r + 15);
   // The river bed is carved 1.6 m into the ground with sloping banks.
   const river = 1 - THREE.MathUtils.smoothstep(Math.abs(x - riverX(z)), RIVER_HALF_WIDTH - 1, RIVER_HALF_WIDTH + 3);
-  return rollingHills(x, z) * Math.min(village, camp, dss) - river * 1.6;
+  const flat = Math.min(village, camp, dss);
+  return (rollingHills(x, z) + edgeHills(x, z)) * flat + fallsStep(x, z) - gullyDepth(x, z) - river * 1.6;
 }
 
 // Height of the river's water surface at a given z.
@@ -84,7 +128,9 @@ function onRoad(x, z, margin = 0) {
     distToDssTrack(x, z) < 2.2 + margin ||
     Math.hypot(x - DSS.x, z - DSS.z) < DSS.r + margin ||
     Math.abs(x - riverX(z)) < RIVER_HALF_WIDTH + 1 + margin ||
-    Math.hypot(x - CAMP.x, z - CAMP.z) < CAMP.r + margin;
+    Math.hypot(x - CAMP.x, z - CAMP.z) < CAMP.r + margin ||
+    gullyDepth(x, z) > 1.2 ||
+    (Math.abs(z - FALLS.z) < 6 + margin && Math.abs(x - riverX(z)) < 28);
 }
 
 // Bends vertices sideways over time, more strongly the higher they are.
@@ -162,12 +208,18 @@ export function buildSky(scene, sunDir, colors = {}) {
 }
 
 function buildGround(scene, physics) {
-  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 160, 160);
+  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 200, 200);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
-  const colors = [];
-  const dry = new THREE.Color('#ddb06a');
-  const grass = new THREE.Color('#a39a4c');
+  const colors = [], wet = [];
+  const laterite = new THREE.Color('#a8502c');
+  const sand = new THREE.Color('#c9a275');
+  const rockGrey = new THREE.Color('#7d7064');
+  for (let i = 0; i < pos.count; i++) pos.setY(i, groundHeight(pos.getX(i), pos.getZ(i)));
+  geo.computeVertexNormals();
+  const nrm = geo.attributes.normal;
+  const dry = new THREE.Color('#c4a560');
+  const grass = new THREE.Color('#7e8a3a');
   const dirt = new THREE.Color('#cf7c43');
   const lush = new THREE.Color('#7f9a3e');
   const gravel = new THREE.Color('#8a7a68');
@@ -175,9 +227,8 @@ function buildGround(scene, physics) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    pos.setY(i, groundHeight(x, z));
     const patch = (Math.sin(x * 0.3) * Math.cos(z * 0.27) + 1) * 0.5;
-    c.copy(dry).lerp(grass, patch * 0.55);
+    c.copy(dry).lerp(grass, 0.25 + patch * 0.6);
     // Packed red earth around the village and along the road.
     c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x, z), 8, 26));
     if (z > 4) c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.abs(x - roadX(z)), 1.6, 3.4));
@@ -189,11 +240,18 @@ function buildGround(scene, physics) {
     c.lerp(lush, 1 - THREE.MathUtils.smoothstep(rd, RIVER_HALF_WIDTH + 1, RIVER_HALF_WIDTH + 9));
     c.lerp(gravel, 1 - THREE.MathUtils.smoothstep(rd, RIVER_HALF_WIDTH - 1, RIVER_HALF_WIDTH + 1));
     c.lerp(dirt, 1 - THREE.MathUtils.smoothstep(Math.hypot(x - CAMP.x, z - CAMP.z), CAMP.r - 4, CAMP.r + 3));
+    // Steep ground shows bare earth: red laterite gully walls, grey rock at the falls.
+    const slope = 1 - nrm.getY(i);
+    const g = gullyDepth(x, z);
+    c.lerp(laterite, THREE.MathUtils.smoothstep(slope, 0.06, 0.2) * (g > 0.3 ? 0.95 : 0.6));
+    if (g > 2.8) c.lerp(sand, THREE.MathUtils.smoothstep(g, 2.8, 3.6) * 0.8);
+    if (Math.abs(z - FALLS.z) < 8) c.lerp(rockGrey, THREE.MathUtils.smoothstep(slope, 0.15, 0.4));
     colors.push(c.r, c.g, c.b);
+    wet.push(Math.max(1 - THREE.MathUtils.smoothstep(rd, RIVER_HALF_WIDTH, RIVER_HALF_WIDTH + 5), g > 3 ? 0.25 : 0));
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+  geo.setAttribute('aWet', new THREE.Float32BufferAttribute(wet, 1));
+  const mesh = new THREE.Mesh(geo, terrainMaterial());
   mesh.receiveShadow = true;
   scene.add(mesh);
 
@@ -289,7 +347,7 @@ function grassTexture(rand) {
       const lean = (rand() - 0.5) * n * 0.5;
       const w = 2 + rand() * 3;
       const grad = g.createLinearGradient(0, n, 0, n - h);
-      const hue = 34 + rand() * 14;
+      const hue = rand() < 0.45 ? 68 + rand() * 24 : 34 + rand() * 14; // green and straw mixed
       grad.addColorStop(0, `hsl(${hue}, 40%, 28%)`);
       grad.addColorStop(0.6, `hsl(${hue}, 55%, ${48 + rand() * 12}%)`);
       grad.addColorStop(1, `hsl(${hue + 6}, 60%, ${68 + rand() * 12}%)`);
@@ -692,7 +750,14 @@ export function buildWorld(scene, physics, { phone = false } = {}) {
   buildGrass(near, rand);
   const updateDust = buildDust(scene, rand);
 
-  const ready = addMeshyPieces(near, physics, rand).catch((err) => console.error(err));
+  let updateSavanna = () => {};
+  // The skyline hills sit on the open country, so they wait for it (main calls landBuilt).
+  let landBuilt;
+  const landReady = new Promise((r) => { landBuilt = r; });
+  const ready = Promise.all([
+    addMeshyPieces(near, physics, rand),
+    addSavanna(scene, physics, landReady).then((f) => { updateSavanna = f; }),
+  ]).catch((err) => console.error(err));
   const hideBeyond = phone ? 110 : 200; // metres outside the savanna's edge
 
   return {
@@ -700,10 +765,12 @@ export function buildWorld(scene, physics, { phone = false } = {}) {
     hemi,
     sky,
     ready,
+    landBuilt: (heightAt) => landBuilt(heightAt),
     update(dt, playerPos) {
       wind.time.value += dt;
       sky.position.copy(playerPos);
       updateDust(dt, playerPos);
+      updateSavanna(dt, playerPos);
       const out = Math.hypot(Math.max(0, Math.abs(playerPos.x) - WORLD_SIZE / 2), Math.max(0, Math.abs(playerPos.z) - WORLD_SIZE / 2));
       near.visible = out < hideBeyond;
     },

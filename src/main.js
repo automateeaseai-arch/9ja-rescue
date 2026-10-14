@@ -94,6 +94,7 @@ async function start() {
   await step('Joining the river valley', 0.35);
   const prepared = prepareValley();
   const land = buildLand(scene, physics, { valleyH: prepared.heightAt, phone: isPhone });
+  world.landBuilt(land.height);
   const atmosphere = createAtmosphere({ scene, world, phone: isPhone });
   let valley = null;
 
