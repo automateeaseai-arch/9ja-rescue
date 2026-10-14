@@ -8,10 +8,11 @@ Landscape, third-person 3D rescue game for **mobile web browsers** (fictional Ni
 - **Be economical with Meshy credits.** Characters cost at most 40 credits (generation + mobile optimisation + rigging; currently 35). Give a credit estimate before spending, and prefer free code solutions: copies of existing models, procedural textures, code-built structures.
 - **Always rig and optimise characters for mobile.**
 - **Test before reporting.** Use headless Chromium screenshots and the `window.game.simulate()` hook. Say plainly what was only tested on a computer and not on a phone.
-- **After each change:** commit and push to the working branch, rebuild the share copy, and republish the artifact link below.
+- **After each change:** commit and push to the working branch, rebuild the share copy and republish the artifact link below, and run `tools/deploy-pages.sh`.
 
 ## Where things live
-- Playable link (private claude.ai artifact; republish to the same URL): https://claude.ai/artifact/2a5tDXarnH6abmbXxjHrzP
+- Playable link (private claude.ai artifact; republish to the same URL): https://claude.ai/artifact/2a5tDXarnH6abmbXxjHrzP (device-only accounts)
+- Web version with Firebase accounts: https://automateeaseai-arch.github.io/9ja-rescue/ (GitHub Pages from the `gh-pages` branch, owner approved 14 Oct). Deploy with `tools/deploy-pages.sh` after each change (it replaces the branch with the new build). The container can't open github.io, so test the same build locally under `/9ja-rescue/`.
 - Branch: `ccr-8667c989-hiwgos` on `automateeaseai-arch/9ja-rescue`
 - Meshy API: `https://api.meshy.ai` (the proxy injects the key; check balance with `GET /openapi/v1/balance`). Credits reset monthly around **13 November 2026**. **Balance (13 Oct, after the cutlass and the slash and kick clips): 321 credits.** Environment budget agreed by the owner: 700 ceiling, 660 used (`docs/river-valley.md` has the ledger).
 
@@ -62,6 +63,7 @@ River Valley (south of the savanna, reached by the road over the escarpment): ra
 - `meshy-prop.sh`: text prompt to static prop (30 credits). Then `opt.mjs` (centre, pivot at base) and `squeeze.mjs` (WebP textures, meshopt; optional texture size).
 - `animsonly.mjs`: strips the mesh from a Meshy animation GLB, keeping the skeleton and clips.
 - `recolor.mjs`: shifts strongly red texture pixels to rust (used on the plantation roof).
+- `deploy-pages.sh`: builds the web version and force-pushes it to `gh-pages` (GitHub Pages).
 - `build-share.sh <outdir>`: builds the artifact copy (models as `.glb.b64.txt`, because artifacts can't serve `.glb`). Publish `<outdir>/page.html` with its `assets/` and `models/` files.
 - All models share Meshy's 24-joint skeleton, face +Z (characters) and use metres. Vehicles' fronts point along local -X.
 - Meshy animation library IDs: https://docs.meshy.ai/en/api/animation-library. Use `action_ids` (3 credits each) on a rig task. Meshy rig tasks expire: the current Female Soldier rig is `01a13561-eb82-75c4-92a3-b19eb0f45746` (13 Oct); if it is gone, re-rig an unskinned copy (5 credits).
