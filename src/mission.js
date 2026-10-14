@@ -120,23 +120,36 @@ export function createMission(ctx) {
     return r;
   }
 
-  function generate(seed, captiveCount, entry) {
+  // Where a pool entry is: 'valley', 'esc' (the escarpment road) or 'savanna'.
+  const areaOf = (o) => { const at = o.at ?? o.a; return o.valley ? 'valley' : typeof at === 'string' && at.startsWith('esc') ? 'esc' : 'savanna'; };
+  // Which areas a mission at each site uses, so a savanna mission stays in the
+  // savanna and a valley mission in the valley (owner, 14 Oct).
+  const AREAS = { camp: ['savanna', 'esc'], compound: ['valley', 'esc'] };
+
+  // recent: { sites: [...], arrivals: [...] } of the last missions, avoided
+  // so missions don't repeat the site or the way in (owner, 14 Oct).
+  function generate(seed, captiveCount, entry, recent = {}) {
     const r = rng(seed);
     const shuffle = (list) => list.map((v) => [r(), v]).sort((a, b) => a[0] - b[0]).map((a) => a[1]);
-    // The captive site for this mission.
-    const siteId = SITES[Math.floor(r() * SITES.length)].id;
+    // The captive site: never the same as last time.
+    const sites = SITES.filter((d) => d.id !== recent.sites?.[0]);
+    const siteId = sites[Math.floor(r() * sites.length)].id;
+    const areas = AREAS[siteId] ?? ['savanna', 'esc', 'valley'];
+    const inArea = (o) => areas.includes(areaOf(o));
     useSite(siteId);
     const to = site.to;
     const dss = dssPos();
     const far = (p, x, z, d) => Math.hypot(p[0] - x, p[1] - z) >= d;
     // Arrival: shuffled candidates, the first valid one (fallback: the first).
-    const order = ARRIVALS.map((a, i) => [r(), i]).sort((a, b) => a[0] - b[0]).map((a) => a[1]);
+    // Arrivals in this site's areas, the recently used ones last.
+    const used = (i) => (recent.arrivals ?? []).includes(ARRIVALS[i].name);
+    const order = ARRIVALS.map((a, i) => [r() + (used(i) ? 10 : 0) + (inArea(a) ? 0 : 20), i]).sort((a, b) => a[0] - b[0]).map((a) => a[1]);
     let arrival = null;
     for (const i of order) {
       const a = ARRIVALS[i], p = spot(a);
       if (!far(p, site.x, site.z, 140) || !far(p, dss.x, dss.z, 70)) continue;
       if (ctx.waterAt(p[0], p[1])) continue;
-      arrival = { x: p[0], z: p[1], yaw: a.yaw, index: i };
+      arrival = { x: p[0], z: p[1], yaw: a.yaw, index: i, name: a.name };
       break;
     }
     if (!arrival) { const p = spot(ARRIVALS[0]); arrival = { x: p[0], z: p[1], yaw: ARRIVALS[0].yaw, index: 0 }; }
@@ -156,14 +169,14 @@ export function createMission(ctx) {
       return out;
     };
     // Seven roaming hostiles: beats near the way in, clear of the arrival.
-    const beats = ROAM_BEATS.map((b) => ({ b, pos: beatPt(b, b.a), pos2: beatPt(b, b.b) }));
+    const beats = ROAM_BEATS.filter(inArea).map((b) => ({ b, pos: beatPt(b, b.a), pos2: beatPt(b, b.b) }));
     const roam = pick(beats, RULES.roamers, (o) => corridor(o.pos),
       (o) => far(o.pos, arrival.x, arrival.z, 60) && far(o.pos2, arrival.x, arrival.z, 50) && far(o.pos, site.x, site.z, 60) && far(o.pos, dss.x, dss.z, 50), 45);
     // Never fewer than seven: the rest of the beats that are clear of the arrival, then any.
     for (const o of shuffle(beats)) { if (roam.length >= RULES.roamers) break; if (!roam.includes(o) && far(o.pos, arrival.x, arrival.z, 40)) roam.push(o); }
     for (const o of beats) { if (roam.length >= RULES.roamers) break; if (!roam.includes(o)) roam.push(o); }
     // Eight health kits outside the site, two inside.
-    const pool = KIT_POOL.map((k) => ({ k, pos: spot(k) }));
+    const pool = KIT_POOL.filter(inArea).map((k) => ({ k, pos: spot(k) }));
     const kits = pick(pool, 8, (o) => corridor(o.pos) * 0.8,
       (o) => far(o.pos, arrival.x, arrival.z, 12) && far(o.pos, site.x, site.z, 55), 30);
     // Never fewer than eight: top up from the rest of the pool if the rules left too few.
@@ -174,7 +187,7 @@ export function createMission(ctx) {
     }));
     shuffle(site.def.insideKits).slice(0, 2).forEach((p, i) => { const [wx, wz] = to(p); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz }); });
     // Four ammunition boxes along the way in, from the spots the kits didn't take.
-    const cratePool = [...pool.filter((o) => !kits.includes(o) && !o.k.deck && !o.k.cave), ...AMMO_SPOTS.map((k) => ({ k, pos: spot(k) }))];
+    const cratePool = [...pool.filter((o) => !kits.includes(o) && !o.k.deck && !o.k.cave), ...AMMO_SPOTS.filter(inArea).map((k) => ({ k, pos: spot(k) }))];
     const awayFromKits = (o) => kits.every((q) => far(o.pos, q.pos[0], q.pos[1], 15));
     const crates = pick(cratePool, RULES.ammoCrates, (o) => corridor(o.pos) * 0.8,
       (o) => far(o.pos, arrival.x, arrival.z, 15) && far(o.pos, site.x, site.z, 55) && awayFromKits(o), 40);
@@ -331,7 +344,7 @@ export function createMission(ctx) {
     const count = account.captiveAlternation % 2 === 0 ? 1 : 2;
     const seed = forcedSeed ?? (Math.random() * 2 ** 31) >>> 0;
     forcedSeed = null;
-    const s = generate(seed, count, 'ground');
+    const s = generate(seed, count, 'ground', account.recent ?? {});
     saveDraft({ setup: s, created: Date.now() });
     return s;
   }
@@ -348,6 +361,9 @@ export function createMission(ctx) {
     const g = Math.min(RULES.maxGrenades, lo.grenades, inv.grenade);
     const vehicle = lo.vehicle && inv[lo.vehicle] ? lo.vehicle : null;
     account.captiveAlternation++;
+    // Remembered so the next missions use another site and other ways in.
+    const rc = account.recent ?? {};
+    account.recent = { sites: [d.setup.site, ...(rc.sites ?? [])].slice(0, 1), arrivals: [ARRIVALS[d.setup.arrival.index]?.name, ...(rc.arrivals ?? [])].filter(Boolean).slice(0, 4) };
     inv.grenade -= g;
     if (entry !== 'ground') inv[entry]--;
     // The next loadout can only offer what is left.
@@ -740,7 +756,7 @@ export function createMission(ctx) {
     freePost,
     siteName: (id) => siteOf(id).name,
     siteInfo: (id) => siteOf(id),
-    _generate: (seed, n = 1) => generate(seed, n, 'ground'),
+    _generate: (seed, n = 1, recent) => generate(seed, n, 'ground', recent),
     _forceSeed: (seed) => { forcedSeed = seed; },
     openSpot,
     spotOf: spot,

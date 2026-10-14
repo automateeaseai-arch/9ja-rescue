@@ -93,6 +93,12 @@ export const DSS_AREA = { radius: 14 };
 export const ARRIVALS = [
   { at: 'road34', yaw: Math.PI, name: 'Savanna road', area: 'the savanna road south of the village', image: 'savanna-village' },
   { at: [56, -48], yaw: -2.4, name: 'Savanna camp', area: 'the empty camp among the savanna kopjes', image: 'savanna-kopjes' },
+  { at: [-120, 100], yaw: 2.33, name: 'Western grassland', area: 'the open grassland west of the DSS river', image: 'savanna-village' },
+  { at: [-140, -60], yaw: 1.58, name: 'North-west hills', area: 'the dry hills in the north-west', image: 'savanna-village' },
+  { at: [-80, -140], yaw: 1.03, name: 'Northern bush', area: 'the thorn bush in the far north', image: 'savanna-village' },
+  { at: [120, 80], yaw: -2.68, name: 'Eastern plain', area: 'the eastern plain', image: 'savanna-village' },
+  { at: [40, 120], yaw: 3.09, name: 'Southern farms', area: 'the farmland south of the village', image: 'savanna-village' },
+  { at: [-20, 140], yaw: 2.81, name: 'South-west track', area: 'the track near the escarpment foot', image: 'savanna-village' },
   { at: 'esc330', yaw: 0, name: 'Escarpment road', area: 'the road over the escarpment', image: 'rock-arch' },
   { valley: [88, -140], yaw: 0.2, name: 'Plateau road', area: 'the plateau north road above the valley', image: '06' },
   { valley: [206, 218], yaw: -2.35, name: 'Forest trail', area: 'the red-mud forest trail in the south-east', image: 'forest-trail' },
@@ -107,6 +113,14 @@ export const ROAM_BEATS = [
   { a: [0, -4], b: [14, -16] },                          // savanna village
   { a: [48, -56], b: [34, -44] },                        // savanna camp
   { a: 'road120', b: 'road150' },                        // savanna road south
+  { a: [-100, -60], b: [-80, -40] },                     // north-west hills
+  { a: [-60, -120], b: [-40, -100] },                    // northern bush
+  { a: [100, 40], b: [100, 0] },                         // eastern plain
+  { a: [20, 100], b: [40, 80] },                         // southern farms
+  { a: [-20, 60], b: [0, 80] },                          // south of the village
+  { a: [-120, -20], b: [-100, 0] },                      // western grassland
+  { a: [120, -80], b: [120, -60] },                      // north-east
+  { a: [-40, -60], b: [-20, -80] },                      // north of the village
   { a: 'esc280', b: 'esc310' },                          // escarpment road
   { valley: true, a: [110, -100], b: [122, -70] },       // plateau north road
   { valley: true, a: [112, 22], b: [106, 4] },           // highland village
@@ -123,6 +137,8 @@ export const ROAM_BEATS = [
 // ([x, z, yHint]; yHint for decks and caves).
 export const KIT_POOL = [
   { at: 'road14k' }, { at: [22, -30] }, { at: [40, -50] }, { at: [-44, 30] }, { at: [6, 10] },
+  { at: [-120, 40] }, { at: [-60, -80] }, { at: [0, 100] }, { at: [80, 40] }, { at: [100, -40] },
+  { at: [-100, -100] }, { at: [60, 100] }, { at: [-20, -120] }, { at: [120, 0] }, { at: [-80, -20] },
   { at: 'esc330k' }, { at: 'esc250k' },
   { valley: [36, -54] }, { valley: [-65, -52] }, { valley: [-34, 16] }, { valley: [-152, -115] },
   { valley: [-178.5, 172], deck: true }, { valley: [-53.5, -102.5], cave: true },
