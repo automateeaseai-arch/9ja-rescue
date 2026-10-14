@@ -450,7 +450,8 @@ export function createScreens() {
     const caps = s.captives.map((c) => ({ name: PERSONAS[c.persona].name, pic: `ui/captives/${String(c.persona + 1).padStart(2, '0')}.webp` }));
     const air = a.loadout.air && a.inventory[a.loadout.air] > 0 ? a.loadout.air : null;
     const vehicle = a.loadout.vehicle && a.inventory[a.loadout.vehicle] ? a.loadout.vehicle : null;
-    return { arr, caps, air, vehicle, n: caps.length, c: charOf() };
+    const site = S.game.mission.siteInfo(s.site ?? 'compound');
+    return { arr, caps, air, vehicle, site, n: caps.length, c: charOf() };
   }
   function briefBg() {
     const { arr, air } = briefData();
@@ -465,8 +466,8 @@ export function createScreens() {
        <p>Your arrival point: <b>${esc(d.arr.name)}</b>, on ${esc(d.arr.area)}.</p>`,
       `<h3>The kidnapping</h3><p>Armed men stopped travellers on the valley road and took ${d.n === 1 ? 'one person' : `${d.n} people`} to a hidden site.</p>${faces}
        <p>${d.caps.map((c) => esc(c.name)).join(' and ')} ${d.n === 1 ? 'is' : 'are'} waiting for you.</p>`,
-      `<h3>Drone report</h3><p>Our drone saw activity at the <b>walled plantation compound</b> west of the river. Six armed men guard it, one of them inside the store house.</p>
-       <p>The captives are held inside the compound buildings. Four more hostiles patrol the land around it.</p>`,
+      `<h3>Drone report</h3><p>${d.site.brief} Six armed men guard it.</p>
+       <p>${d.site.held} Four more hostiles patrol the land around it.</p>`,
       `<h3>Your arrival</h3><p>${d.air ? `You jump from a cargo plane over ${esc(d.arr.area)} and steer your ${itemName(d.air).toLowerCase()} for about 30 seconds to the marked landing area.` : `You arrive on foot at ${esc(d.arr.area)}.`}${d.vehicle ? ` Your ${itemName(d.vehicle).toLowerCase()} is parked beside the arrival point.` : ''}</p>
        <p><b>Collect health supplies to improve your chances before reaching the captive site.</b> Eight first-aid kits lie along the way in; the arrow guides you.</p>`,
       `<div class="top5">${faces}<div class="facts"><div>${I.captives}${d.n} ${plural}</div><div>${I.hostile}10 hostiles</div><div>${I.shield}DSS extraction</div></div></div>

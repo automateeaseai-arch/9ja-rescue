@@ -15,7 +15,7 @@ import { createVehicles } from './vehicles.js';
 import { createAirDrop } from './airdrop.js';
 import { createCaptives } from './hostages.js';
 import { createMission } from './mission.js';
-import { SITE } from './config.js';
+import { SITES } from './config.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
 import { buildValley, prepareValley } from './valley/build.js';
@@ -132,7 +132,7 @@ async function start() {
   }
 
   const toWorld = ([x, z]) => [x + VALLEY_ORIGIN.x, z + VALLEY_ORIGIN.z];
-  const siteCentre = toWorld(SITE.centre);
+  const siteCentre = toWorld(SITES[0].centre);
   const crouchBtn = document.getElementById('crouch-btn');
   const fx = createFx(scene);
   const ambience = createAmbience({ waterAt });

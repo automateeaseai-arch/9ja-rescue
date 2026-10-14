@@ -39,21 +39,44 @@ export const AI = {
   walk: 1.6, run: 4.0,
 };
 
-// The captive site: the walled plantation compound in the River Valley.
-export const SITE = {
-  centre: [-80, 15],                    // valley
-  radius: 48,                           // inside this the site counts as reached
-  entrances: [[-48, 22], [-75, 41], [-112, 20], [-69, -11]], // valley: east, south, west gates, breach
-  // Six defenders, including one inside the store house (valley x, z, facing).
-  defenders: [
-    [-44, 18, Math.PI / 2], [-84, 10, Math.PI], [-92, 12, -Math.PI / 2],
-    [-57, 6, 0], [-75, 45, 0], [-95.5, 30.6, Math.PI / 2],
-  ],
-  // Captive rooms: the store house and the open storage shed.
-  captiveSpots: [[-98.4, 35.2, Math.PI / 2], [-61.5, 36.6, 0]],
-  // Two health kits inside the site walls, out in the open yard (never inside a building).
-  insideKits: [[-79, 14], [-72, 27]],
-};
+// Captive sites: each mission picks one at random (owner, 14 Oct: missions
+// must differ). Per mission, six defender posts are drawn from the site's
+// pool (`fixed` posts are always manned), the captives are put in random
+// rooms, and two health kits lie in the open yard. Coordinates are in the
+// site's frame: `valley` (valley-local) or `camp` (metres from CAMP in world.js).
+export const SITES = [
+  {
+    id: 'compound', frame: 'valley', name: 'walled plantation compound',
+    brief: 'Our drone saw activity at the <b>walled plantation compound</b> west of the river in the River Valley.',
+    held: 'The captives are held inside the compound buildings.',
+    centre: [-80, 15],                    // valley
+    radius: 48,                           // inside this the site counts as reached
+    entrances: [[-48, 22], [-75, 41], [-112, 20], [-69, -11]], // east, south, west gates, breach
+    defenders: [
+      [-44, 18, Math.PI / 2], [-84, 10, Math.PI], [-92, 12, -Math.PI / 2],
+      [-57, 6, 0], [-75, 45, 0], [-95.5, 30.6, Math.PI / 2, 'fixed'],   // store house guard
+      [-66, 24, 0.8], [-88, 0, Math.PI], [-104, 20, -Math.PI / 2], [-70, -6, 0.3], [-62, 34, 0.2],
+    ],
+    // Captive rooms: the store house and the open storage shed.
+    captiveSpots: [[-98.4, 35.2, Math.PI / 2], [-61.5, 36.6, 0]],
+    // Health kits inside the walls, out in the open yard (never inside a building).
+    insideKits: [[-79, 14], [-72, 27], [-86, 22], [-66, 12]],
+  },
+  {
+    id: 'camp', frame: 'camp', name: 'kopje camp',
+    brief: 'Our drone saw activity at the <b>bush camp among the granite kopjes</b> north-east of the savanna village.',
+    held: 'The captives are held in the stick hut and under the tarp canopy.',
+    centre: [0, 0],
+    radius: 24,
+    entrances: [[-9, 11], [16, 3], [3, -17]],   // the track from the village, and gaps between the rocks
+    defenders: [
+      [-6, 9, 2.5, 'fixed'], [5, 1.5, 0], [10, 4, 1.2], [12, -6, 2], [-3, -9, -2.6], [-11, -1, -1.6],
+      [8, -9, 3], [-12, 6, -0.6], [1, 7, 0.4], [15, 1, 1.6],
+    ],
+    captiveSpots: [[4, -5, 0], [6.5, -4.5, 0], [-8, -5.5, 0.4], [-10.5, -4.5, 0.2]],
+    insideKits: [[2, 4], [-4, 1], [9, 1], [-2, -2]],
+  },
+];
 
 // The DSS destination: the savanna extraction point by the river (the van
 // drives off north). Far from the compound: about 650 m of walking.

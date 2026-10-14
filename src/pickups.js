@@ -43,6 +43,29 @@ function ammoBox() {
   return g;
 }
 
+// Code-built first-aid kit (used only if the model can't be downloaded):
+// a green case with a white cross on both faces and a handle.
+function codeKit() {
+  const g = new THREE.Group();
+  const green = new THREE.MeshStandardMaterial({ color: '#2f9e4f', roughness: 0.5 });
+  const white = new THREE.MeshStandardMaterial({ color: '#f4f4f0', roughness: 0.5 });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.4, 0.2), green);
+  box.castShadow = true;
+  g.add(box);
+  for (const zf of [0.101, -0.101]) {
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.01), white).translateZ(zf));
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, 0.01), white).translateZ(zf));
+  }
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.016, 6, 12, Math.PI), white);
+  handle.position.y = 0.2;
+  g.add(handle);
+  g.position.y = -0.2;
+  const outer = new THREE.Group();
+  outer.add(g);
+  outer.userData.code = true;
+  return outer;
+}
+
 // opts: heightAt(x, z, yHint), heal(amount) → bool, addAmmo(n) → bool, fx,
 // onCollect(pickup)
 export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect }) {
@@ -54,11 +77,26 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
   const ringGeo = new THREE.PlaneGeometry(1.6, 1.6).rotateX(-Math.PI / 2);
   const prompt = document.getElementById('prompt');
   let fullHint = 0;
+  // The kit model is waited for before a mission starts (three tries); if it
+  // still can't be fetched, a code-built kit stands in, so no kit is ever
+  // invisible.
   let kitModel = null;
-  const kitReady = loadGlb('models/items/First_Aid_Kit.glb').then((gltf) => {
-    gltf.scene.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    kitModel = gltf.scene;
-  }).catch((err) => console.error(err));
+  const kitReady = (async () => {
+    for (let i = 0; i < 3 && !kitModel; i++) {
+      try {
+        const gltf = await loadGlb('models/items/First_Aid_Kit.glb');
+        gltf.scene.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        kitModel = gltf.scene;
+      } catch (err) { console.error('first-aid kit model', err); }
+    }
+    if (!kitModel) kitModel = codeKit();
+  })();
+  // A faint green (or amber) beam above each pickup, seen over grass and bushes.
+  const beamGeo = new THREE.CylinderGeometry(0.09, 0.16, 7, 8, 1, true).translate(0, 3.5, 0);
+  const beams = {
+    health: new THREE.MeshBasicMaterial({ color: '#7dff9a', transparent: true, opacity: 0.28, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+    ammo: new THREE.MeshBasicMaterial({ color: '#ffc43c', transparent: true, opacity: 0.2, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+  };
 
   function clear() {
     for (const it of items) scene.remove(it.g);
@@ -73,12 +111,14 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
       const g = new THREE.Group();
       let obj;
       if (p.kind === 'health') {
-        obj = kitModel ? kitModel.clone() : new THREE.Group();
-        obj.scale.setScalar(0.32); // about 60 cm wide, easy to spot
+        obj = kitModel.clone();
+        if (!kitModel.userData.code) obj.scale.setScalar(0.32); // about 60 cm wide, easy to spot
       } else obj = ammoBox();
       g.add(obj);
       const ring = new THREE.Mesh(ringGeo, rings[p.kind].clone());
       g.add(ring);
+      const beam = new THREE.Mesh(beamGeo, beams[p.kind]);
+      g.add(beam);
       g.position.set(p.x, heightAt(p.x, p.z, p.yHint), p.z);
       scene.add(g);
       const used = collected.has(p.id);
@@ -90,6 +130,9 @@ export function createPickups(scene, { heightAt, heal, addAmmo, fx, onCollect })
   return {
     items,
     configure,
+    ready: kitReady,
+    // For tests: how the kits are drawn ('model' or 'code').
+    get kitKind() { return kitModel ? (kitModel.userData.code ? 'code' : 'model') : 'loading'; },
     setCollected(collected) {
       for (const it of items) { it.used = collected.has(it.id); it.g.visible = !it.used; }
     },

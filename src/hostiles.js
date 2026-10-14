@@ -463,6 +463,8 @@ export function spawnHostiles(scene, opts = {}) {
   }
 
   return {
+    // The captive site the defenders stay near (it changes per mission).
+    setSite(site) { opts.site = site; },
     units,
     update,
     configure,

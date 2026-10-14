@@ -1,10 +1,12 @@
 // Mission flow from the 9ja Rescue Game Plan and User Flow v2.2.
 //
-// One mission at a time, generated from a saved seed: a validated random
-// arrival, four roaming hostiles on patrol beats and eight health kits
-// chosen along the way to the captive site, six fixed ammo packs, six site
-// defenders and two kits inside the walled plantation compound, and one or
-// two captives (alternating per new mission). Stages:
+// One mission at a time, generated from a saved seed: a random captive site
+// (SITES: the valley plantation compound or the savanna kopje camp), a
+// validated random arrival, four roaming hostiles on patrol beats and eight
+// health kits chosen along the way to the site, six fixed ammo packs, six
+// defenders on posts drawn from the site's pool, two kits in its yard, and
+// one or two random captives (alternating per new mission) in random rooms.
+// Stages:
 //   ARRIVAL → EXPLORE → CLEAR_SITE → RESCUE → ESCORT → DSS_BOARDING →
 //   DSS_DEPARTURE → COMPLETED
 // Captives can be freed only when all six site defenders are down; the DSS
@@ -19,13 +21,13 @@
 // loadout, show the briefing from a saved draft, then start or continue here.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { RULES, SITE, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
+import { RULES, SITES, ARRIVALS, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
 import { PERSONAS } from './hostages.js';
 import { sound } from './sound.js';
+import { CAMP } from './world.js';
 
 const VERSION = 1;
-const STAGE_TEXT_SITE = 'the captive site (the walled plantation compound in the River Valley)';
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -59,9 +61,19 @@ export function createMission(ctx) {
   };
   const spot = (s) => (s.valley ? W(s.valley) : typeof s.at === 'string' ? named(s.at) : s.at);
   const beatPt = (b, p) => (b.valley ? W(p) : typeof p === 'string' ? named(p) : p);
-  const siteC = W(SITE.centre);
-  const site = { x: siteC[0], z: siteC[1], r: SITE.radius };
-  const entrances = SITE.entrances.map(W);
+  // The mission's captive site (one of SITES, chosen per mission).
+  const site = { x: 0, z: 0, r: 0, def: SITES[0] };
+  let entrances = [];
+  const siteOf = (id) => SITES.find((d) => d.id === id) ?? SITES[0];
+  function useSite(id) {
+    const def = siteOf(id);
+    const to = (p) => (def.frame === 'valley' ? W(p) : [CAMP.x + p[0], CAMP.z + p[1]]);
+    const c = to(def.centre);
+    Object.assign(site, { x: c[0], z: c[1], r: def.radius, def, to });
+    entrances = def.entrances.map(to);
+    hostiles.setSite?.({ x: site.x, z: site.z });
+  }
+  useSite(SITES[0].id);
   const dssPos = () => ctx.getDss()?.pos ?? new THREE.Vector3(-50, 0, 40);
 
   // ---------------------------------------------------------------- setup
@@ -87,8 +99,33 @@ export function createMission(ctx) {
     return p;
   }
 
+  // A guard post must be open ground (not inside a rock, wall or crate): a
+  // blocked post moves to the nearest free spot. Inside a building is fine.
+  function solidAt(x, y, z) {
+    let hit = false;
+    ctx.physics.intersectionsWithPoint({ x, y, z }, () => { hit = true; return false; }, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS);
+    return hit;
+  }
+  function freePost(r) {
+    const [x, z, yaw] = r.post;
+    const bad = (px, pz) => ctx.waterAt(px, pz) || solidAt(px, ctx.surfaceAt(px, pz) + 1, pz);
+    if (!bad(x, z)) return r;
+    for (let d = 1; d <= 12; d += 1) {
+      for (let a = 0; a < 12; a++) {
+        const px = x + Math.cos(a * Math.PI / 6) * d, pz = z + Math.sin(a * Math.PI / 6) * d;
+        if (!bad(px, pz)) return { ...r, post: [px, pz, yaw], patrol: r.patrol };
+      }
+    }
+    return r;
+  }
+
   function generate(seed, captiveCount, entry) {
     const r = rng(seed);
+    const shuffle = (list) => list.map((v) => [r(), v]).sort((a, b) => a[0] - b[0]).map((a) => a[1]);
+    // The captive site for this mission.
+    const siteId = SITES[Math.floor(r() * SITES.length)].id;
+    useSite(siteId);
+    const to = site.to;
     const dss = dssPos();
     const far = (p, x, z, d) => Math.hypot(p[0] - x, p[1] - z) >= d;
     // Arrival: shuffled candidates, the first valid one (fallback: the first).
@@ -126,25 +163,31 @@ export function createMission(ctx) {
     const pool = KIT_POOL.map((k) => ({ k, pos: spot(k) }));
     const kits = pick(pool, 8, (o) => corridor(o.pos) * 0.8,
       (o) => far(o.pos, arrival.x, arrival.z, 12) && far(o.pos, site.x, site.z, 55), 30);
+    // Never fewer than eight: top up from the rest of the pool if the rules left too few.
+    for (const o of shuffle(pool)) { if (kits.length >= 8) break; if (!kits.includes(o) && far(o.pos, site.x, site.z, site.r + 8)) kits.push(o); }
     const kitList = kits.map((o, i) => ({
       id: `kit-${i + 1}`, kind: 'health', x: o.pos[0], z: o.pos[1],
       yHint: o.k.deck ? ctx.land.height(o.pos[0], o.pos[1]) + 3 : o.k.cave ? 7.6 : undefined,
     }));
-    SITE.insideKits.forEach(([x, z], i) => { const [wx, wz] = W([x, z]); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz }); });
+    shuffle(site.def.insideKits).slice(0, 2).forEach((p, i) => { const [wx, wz] = to(p); kitList.push({ id: `kit-in-${i + 1}`, kind: 'health', x: wx, z: wz }); });
     const ammo = AMMO_SPOTS.map((a, i) => { const [x, z] = spot(a); return { id: `ammo-${i + 1}`, kind: 'ammo', x, z }; });
+    // Six defenders: the fixed posts, then random ones from the site's pool.
+    const posts = site.def.defenders;
+    const defenderPosts = [...posts.filter((d) => d[3] === 'fixed'), ...shuffle(posts.filter((d) => d[3] !== 'fixed'))].slice(0, 6);
     // Roster by model index: 0-3 roam, 4-9 defend the site.
     const roster = [
       ...roam.map((o, i) => ({ id: `roam-${i + 1}`, group: 'roam', post: [...o.pos, 0], patrol: [o.pos, o.pos2] })),
-      ...SITE.defenders.map(([x, z, yaw], i) => ({ id: `site-${i + 1}`, group: 'site', post: [...W([x, z]), yaw] })),
+      ...defenderPosts.map(([x, z, yaw], i) => ({ id: `site-${i + 1}`, group: 'site', post: [...to([x, z]), yaw] })),
     ];
     // Captives: distinct personas.
     const personas = PERSONAS.map((p, i) => [r(), i]).sort((a, b) => a[0] - b[0]).slice(0, captiveCount).map((a) => a[1]);
+    const rooms = shuffle(site.def.captiveSpots);
     const caps = personas.map((persona, i) => {
-      const [x, z, yaw] = SITE.captiveSpots[i];
-      const [wx, wz] = W([x, z]);
+      const [x, z, yaw] = rooms[i];
+      const [wx, wz] = to([x, z]);
       return { id: `captive-${i + 1}`, persona, x: wx, z: wz, yaw };
     });
-    return { id: `m-${seed.toString(36)}`, version: VERSION, seed, entry, arrival, roster, kits: kitList, ammo, captives: caps };
+    return { id: `m-${seed.toString(36)}`, version: VERSION, seed, site: siteId, entry, arrival, roster, kits: kitList, ammo, captives: caps };
   }
 
   function initialState(setup) {
@@ -214,6 +257,7 @@ export function createMission(ctx) {
     prog(0.3, 'Loading your character');
     await ctx.applyCharacter?.(setup.character);
     prog(0.5, 'Placing hostiles and supplies');
+    useSite(setup.site ?? 'compound');   // older saves: the compound
     stage = state.stage;
     reachedSite = state.reachedSite;
     atDss = state.atDss;
@@ -228,6 +272,7 @@ export function createMission(ctx) {
     Object.assign(combat.stats, { health: state.hp, mag: state.mag, reserve: state.reserve, reload: 0, burstLeft: 0, hurt: 0 });
     grenades.count = state.grenades;
     // Hostiles, pickups, captives, DSS van, vehicles.
+    setup.roster = setup.roster.map(freePost);
     hostiles.configure(setup.roster.map((r) => {
       const h = state.hostiles[r.id];
       return h ? { ...r, hp: h.hp, down: h.down, at: h.at } : r;
@@ -235,6 +280,9 @@ export function createMission(ctx) {
     setup.kits = setup.kits.map(openSpot);
     setup.ammo = setup.ammo.map(openSpot);
     await pickups.configure([...setup.kits, ...setup.ammo], collected);
+    // Every kit must be there before play starts (owner, 14 Oct).
+    const placed = pickups.items.filter((k) => k.kind === 'health' && k.obj.children.length).length;
+    if (placed !== setup.kits.length) throw new Error(`Only ${placed} of ${setup.kits.length} first-aid kits could be placed. Tap Retry.`);
     prog(0.65, 'Bringing in the captives');
     await captives.configure(setup.captives.map((c) => ({ ...c, state: state.captives[c.id] ?? 'bound' })), player.position);
     ctx.getDss()?.reset();
@@ -266,11 +314,13 @@ export function createMission(ctx) {
 
   // The briefing's mission: generated once and kept as a draft (so going back
   // and forth between the menus never rerolls it) until Begin Mission.
+  let forcedSeed = null;   // tests: the next briefing's seed
   function prepare() {
     const d = loadDraft();
     if (d?.setup?.version === VERSION) return d.setup;
     const count = account.captiveAlternation % 2 === 0 ? 1 : 2;
-    const seed = (Math.random() * 2 ** 31) >>> 0;
+    const seed = forcedSeed ?? (Math.random() * 2 ** 31) >>> 0;
+    forcedSeed = null;
     const s = generate(seed, count, 'ground');
     saveDraft({ setup: s, created: Date.now() });
     return s;
@@ -650,6 +700,12 @@ export function createMission(ctx) {
 
   return {
     blocked,
+    freePost,
+    siteName: (id) => siteOf(id).name,
+    siteInfo: (id) => siteOf(id),
+    _generate: (seed, n = 1) => generate(seed, n, 'ground'),
+    _forceSeed: (seed) => { forcedSeed = seed; },
+    openSpot,
     spotOf: spot,
     prepare,
     discardDraft,
