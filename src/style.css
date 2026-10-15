@@ -205,3 +205,6 @@ body[data-buttons=large] :is(.touch-ctrl, #interact-btn, #ammo, #weapons) { zoom
 .panel button.share { background: #1f6b3a; border-color: #7fd08a; font-weight: 800; }
 .share-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .panel .share-row button { flex: 1; }
+.share-line { display: flex; gap: 8px; align-items: stretch; }
+.share-line #results-card { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; border: 1.5px solid #f2c443; align-self: center; }
+.share-line button { flex: 1; }
