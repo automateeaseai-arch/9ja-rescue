@@ -23,6 +23,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { install } from './install.js';
+import { shareRescue, resetShare } from './share.js';
 import { track } from './analytics.js';
 import { RULES, SITES, ARRIVALS, missionName, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
@@ -473,6 +474,7 @@ export function createMission(ctx) {
     });
   }
 
+  let lastRescue = null;   // for Share on the results panel
   function complete(list) {
     for (const c of list) c.state = 'departed';
     stage = 'COMPLETED';
@@ -498,6 +500,8 @@ export function createMission(ctx) {
       <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
       <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
     install.offerCard(ui.resultsBody, account.missionsCompleted);
+    lastRescue = { captives: list.length, mission: missionName(setup).name };
+    resetShare(document.getElementById('results-share'));
   }
 
   // What Interact does right now: { label, enabled, run }.
@@ -725,6 +729,7 @@ export function createMission(ctx) {
     u.interact.addEventListener('click', hit);
     on('down-checkpoint', () => restartCheckpoint());
     on('down-retry', () => retry());
+    on('results-share', () => shareRescue(lastRescue, document.getElementById('results-share')));
     on('results-again', () => ctx.onMenu?.('characters'));
     on('results-home', () => ctx.onMenu?.('home'));
     on('pause-resume', () => togglePause(false));

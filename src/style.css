@@ -200,3 +200,8 @@ body[data-buttons=large] :is(.touch-ctrl, #interact-btn, #ammo, #weapons) { zoom
 .install-offer .t b { font-size: 15px; color: var(--accent); }
 .install-offer .b { grid-column: 2; display: flex; gap: 8px; }
 .install-offer .b button { min-height: 38px; font-size: 14px; }
+
+/* Share your rescue (results panel). */
+.panel button.share { background: #1f6b3a; border-color: #7fd08a; font-weight: 800; }
+.share-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.panel .share-row button { flex: 1; }
