@@ -497,7 +497,7 @@ export function createMission(ctx) {
       <div>Captives rescued: <b>${list.length}</b> (${list.map((c) => c.name).join(', ')})</div>
       <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
       <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
-    install.offerCard(ui.resultsBody);
+    install.offerCard(ui.resultsBody, account.missionsCompleted);
   }
 
   // What Interact does right now: { label, enabled, run }.
