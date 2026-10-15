@@ -22,6 +22,7 @@
 // loadout, show the briefing from a saved draft, then start or continue here.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { install } from './install.js';
 import { track } from './analytics.js';
 import { RULES, SITES, ARRIVALS, missionName, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
 import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
@@ -496,6 +497,7 @@ export function createMission(ctx) {
       <div>Captives rescued: <b>${list.length}</b> (${list.map((c) => c.name).join(', ')})</div>
       <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
       <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
+    install.offerCard(ui.resultsBody);
   }
 
   // What Interact does right now: { label, enabled, run }.

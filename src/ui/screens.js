@@ -20,6 +20,7 @@ import { PERSONAS } from '../hostages.js';
 import { sound } from '../sound.js';
 import { cloud } from '../cloud.js';
 import { startStats } from '../stats.js';
+import { install, IOS_TIP } from '../install.js';
 import { settings as gameSettings } from '../settings.js';
 const openSettings = (cb) => gameSettings.open(cb);
 
@@ -63,6 +64,7 @@ const I = {
   bulb: svg('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>'),
   rifle: svg('<path d="M2 13h13l2-2h5v2l-4 2h-3l-1 3h-3l1-3H2z"/>'),
   bike: svg('<circle cx="5.5" cy="16" r="3.5"/><circle cx="18.5" cy="16" r="3.5"/><path d="M5.5 16l4-7h5l4 7M9 9h-2M14 9l-2 7"/>'),
+  download: svg('<path d="M12 3v12M7 10l5 5 5-5M5 20h14"/>'),
   plane: svg('<path d="M2 13l8-1 5-8h2l-2 8 6 1v2l-6 1 2 6h-2l-5-6-8-1z"/>'),
   coins: '<i class="m-coin"></i>',
 };
@@ -260,7 +262,7 @@ export function createScreens() {
         const name = c?.name ?? S.user.email.split('@')[0];
         const pic = c ? Chars.look(c.gender, c.role).portrait : null;
         return `<div class="head">${logo()}<div class="welcome">Welcome${c ? ' back' : ''},<b>${esc(name)}</b></div></div>
-        <div class="top-r">${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
+        <div class="top-r">${install.can ? btn('Install game', 'install', { kind: 'outline', cls: 'small m-install', icon: I.download }) : ''}${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
         <div class="missions">
           ${saved ? btn(`Continue mission<small>${esc(saved.name)} • ${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
@@ -696,6 +698,15 @@ export function createScreens() {
     },
     // Test tool (owner request): straight to the cargo plane with a glider.
     // Grants one test glider, equips it and starts a fresh mission.
+    async install() {
+      if (install.ios) {
+        sheet(`<h2 class="m-title">Install 9ja Rescue</h2><p>${IOS_TIP}</p><p class="m-sub">The game then opens from its own icon, full screen.</p>
+          <div class="row">${btn('OK', 'closeSheet')}</div>`);
+        return;
+      }
+      await install.prompt();
+      rerender();
+    },
     testGlider() {
       if (S.game.mission.savedSummary()) {
         sheet(`<h2 class="m-title">Glider test</h2><p>This abandons your current mission and starts a new one from the cargo plane with a glider.</p>

@@ -348,3 +348,6 @@ body.in-menu { touch-action: manipulation; }
 .m-rank td { padding: .35rem .4rem; border-top: 1px solid rgba(240,240,230,.12); }
 .m-rank td:nth-child(n+3), .m-rank th:nth-child(n+3) { text-align: right; }
 .m-rank tr.me td { background: rgba(240,183,51,.18); font-weight: 700; }
+
+/* Install game (Home, top right). */
+.s04 .m-install { white-space: nowrap; }
