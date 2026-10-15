@@ -332,7 +332,7 @@ export function createScreens() {
         const card = (k) => `<button class="m-card ${role === k ? 'sel' : ''}" data-act="role" data-v="${k}" aria-pressed="${role === k}"><div class="pic" style="background-image:url('${Chars.look(gender, k).portrait}')"></div><div class="shade"></div>${role === k ? `<div class="tick">${I.check}</div>` : ''}<div class="cap"><div class="name">${k}</div></div></button>`;
         return `<div class="m-logo-tl">${logo()}</div>
           <div class="m-panel rolehead"><h1 class="m-title">Choose your role</h1>${steps(1)}</div>
-          <div class="m-cards">${card('hunter')}${card('soldier')}</div>
+          <div class="m-cards three">${card('hunter')}${card('soldier')}${card('vigilante')}</div>
           <div class="caption">Same abilities. Your preferred appearance.</div>
           <div class="m-foot-l">${btn('Back', 'go', { kind: 'dark', icon: I.back, data: 'data-to="06"' })}</div>
           <div class="m-foot-r">${btn('Next', 'go', { right: I.next, disabled: !role, data: 'data-to="08"' })}</div>`;

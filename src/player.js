@@ -12,6 +12,8 @@ export const CHARACTERS = [
   { name: 'Forest Scout', url: 'models/Female_Hunter_Forest_Scout_mobile.glb' },
   { name: 'Female Soldier', url: 'models/Female_Soldier_Woodland_mobile.glb' },
   { name: 'Male Soldier', url: 'models/Male_Soldier_Woodland_mobile.glb' },
+  { name: 'Female Vigilante', url: 'models/Female_Vigilante_Street_mobile.glb' },
+  { name: 'Male Vigilante', url: 'models/Male_Vigilante_Patrol_mobile.glb' },
 ];
 
 const WALK_SPEED = 1.7;   // metres per second
@@ -607,6 +609,8 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     // Everything that draws the player (body, rifle, cutlass), e.g. to hide them from a close camera.
     get parts() { return [root, rifle, cutlass].filter(Boolean); },
     get model() { return model; },
+    // For tests: the animations currently playing (by role) with a visible weight.
+    get activeClips() { return actions ? Object.keys(actions).filter((k) => actions[k].getEffectiveWeight() > 0.05) : []; },
     // Called by the vehicles module every step while driving.
     ride(seat) {
       if (state.mode !== 'drive') {

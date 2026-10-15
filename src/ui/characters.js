@@ -1,7 +1,7 @@
 // Saved characters (plan section 3): up to three per account, each with a
-// stable ID, name, gender, role and appearance. Hunter and Soldier are
-// appearance choices with equal abilities. Each gender and role pair uses one
-// of the four approved player models.
+// stable ID, name, gender, role and appearance. Hunter, Soldier and
+// Vigilante (owner, 15 Oct) are appearance choices with equal abilities. Each
+// gender and role pair uses one of the six approved player models.
 import { loadCharacters, saveCharacters } from '../save.js';
 
 export const SLOTS = 3;
@@ -13,6 +13,8 @@ const LOOKS = {
   'female-hunter': { model: 1, portrait: 'ui/portraits/female-hunter.webp' },
   'female-soldier': { model: 2, portrait: 'ui/portraits/female-soldier.webp' },
   'male-soldier': { model: 3, portrait: 'ui/portraits/male-soldier.webp' },
+  'female-vigilante': { model: 4, portrait: 'ui/portraits/female-vigilante.webp' },
+  'male-vigilante': { model: 5, portrait: 'ui/portraits/male-vigilante.webp' },
 };
 export const look = (gender, role) => LOOKS[`${gender}-${role}`];
 export const label = (c) => `${cap(c.gender)} • ${cap(c.role)}`;

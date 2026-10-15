@@ -221,6 +221,8 @@ body.in-menu { touch-action: manipulation; }
 .s07 .rolehead, .s06 .rolehead { position: absolute; top: var(--m-safe-t); left: 50%; transform: translateX(-50%); width: 25rem; padding: .7rem 1.2rem .55rem; text-align: center; }
 .s07 .rolehead .m-title, .s06 .rolehead .m-title { font-size: 1.9rem; }
 .s06 .m-cards, .s07 .m-cards { top: 6.6rem; bottom: 4.2rem; }
+.s07 .m-cards.three { padding: 0 2rem; }
+.s07 .three .m-card { width: 12.5rem; }
 .s07 .caption, .s06 .caption { position: absolute; left: 50%; bottom: calc(var(--m-safe-b) + .9rem); transform: translateX(-50%); font-size: .95rem; text-shadow: 0 1px 4px rgba(0,0,0,.95); white-space: nowrap; }
 
 /* 08 / 09 character preview */
