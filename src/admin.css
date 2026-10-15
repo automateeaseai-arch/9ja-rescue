@@ -15,7 +15,8 @@ body {
 }
 #app { max-width: 60rem; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); }
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-header .logo { width: 92px; flex: none; }
+.logo { display: block; height: auto; }
+header .logo { width: 72px; flex: none; }
 header h1 { font: 800 1.7rem/1 var(--head); text-transform: uppercase; letter-spacing: .03em; margin: 0; }
 header .who { color: var(--muted); font-size: .85rem; margin-top: 4px; overflow-wrap: anywhere; }
 header .grow { flex: 1; min-width: 0; }
@@ -57,7 +58,7 @@ h2 { font: 700 1.05rem/1 var(--head); text-transform: uppercase; letter-spacing:
 .days .today { color: var(--text); font-weight: 700; }
 
 .gate { text-align: center; padding: 34px 20px; margin-top: 40px; }
-.gate .logo { width: 170px; margin: 0 auto 14px; display: block; }
+.gate .logo { width: 150px; margin: 0 auto 14px; display: block; }
 .gate p { color: var(--muted); max-width: 26rem; margin: 10px auto 20px; }
 .err { color: var(--red); }
 .note { color: var(--muted); font-size: .82rem; margin-top: 22px; }
