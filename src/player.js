@@ -161,6 +161,9 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   let model = null, mixer = null, actions = null;
   let vy = 0;
   let grounded = false;
+  const safe = { x: spawn.x, y: spawn.y + FOOT_OFFSET + 0.2, z: spawn.z };
+  let firmT = 0, voidT = 0;
+  const downRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   let speed = 0;
   let facing = Math.PI; // start facing -Z (towards the village house)
   let airborne = false;
@@ -258,12 +261,17 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     // Head room above the top.
     if (cast({ x: p.x + dir.x * (wall + 0.12), y: top + 0.05, z: p.z + dir.z * (wall + 0.12) }, { x: 0, y: 1, z: 0 }, 1.0) != null) return null;
     // Walk the top until it ends or there is room to stand.
+    // A top that rises further in (a sloping rock) is stood on at its
+    // highest point, so the feet never end up inside it.
+    let best = top;
     for (let k = 0.3; k <= 1.5; k += 0.2) {
       const h = topAt(wall + k);
-      if (h < top - 0.6) return { top, over: wall + k + 0.35 };   // thin wall: over and down
-      if (k >= 0.7) return { top, over: wall + 0.6 };              // wide enough to stand on
+      if (h < top - 0.6) return { top: best, over: wall + k + 0.35 };   // thin wall: over and down
+      best = Math.max(best, h);
+      if (k >= 0.7) break;                                              // wide enough to stand on
     }
-    return { top, over: wall + 0.6 };
+    if (best - feet > CLIMB_MAX + 0.4) return null;
+    return { top: best, over: wall + 0.6 };
   }
 
   const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _p = new THREE.Vector3(), _basis = new THREE.Matrix4();
@@ -509,7 +517,30 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
       airT = 0;
       if (state.mode === 'swim' && speed > 0.3 && (strokeT -= dt) <= 0) { strokeT = 1.1; opts.paddle?.(0.22); }
     }
-    if (next.y < -30) { next.x = 0; next.y = 5; next.z = 12; vy = 0; } // fell out of the world
+    // Safety net: remember the last spot stood on firmly; if the player ever
+    // slips under the ground (nothing below them), put them back there
+    // instead of at the start of the map.
+    if (state.mode === 'ground' && grounded && !airborne) {
+      if ((firmT += dt) > 0.3) { safe.x = next.x; safe.y = next.y; safe.z = next.z; }
+    } else firmT = 0;
+    if (state.mode === 'ground' && !grounded && vy < -4 && (voidT -= dt) <= 0) {
+      voidT = 0.1;
+      downRay.origin = { x: next.x, y: next.y, z: next.z };
+      if (!physics.castRay(downRay, 120, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC)) next.y = -999;
+    }
+    if (next.y < -30) {   // fell out of the world: back to the last firm spot
+      state.caught = (state.caught ?? 0) + 1;
+      next.x = safe.x; next.y = safe.y + 0.3; next.z = safe.z;
+      // That spot should have ground under it; if not, the top surface there.
+      downRay.origin = { x: safe.x, y: safe.y, z: safe.z };
+      if (!physics.castRay(downRay, 3, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC)) {
+        downRay.origin = { x: safe.x, y: 400, z: safe.z };
+        const top = physics.castRay(downRay, 600, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+        next.y = top ? 400 - top.timeOfImpact + FOOT_OFFSET + 0.2 : 5;
+        safe.y = next.y;
+      }
+      vy = -1; airVel.set(0, 0, 0); airborne = false;
+    }
     body.setNextKinematicTranslation(next);
 
     // Visuals follow the physics body.
@@ -632,6 +663,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
     setFacing(y) { facing = y; root.rotation.set(0, y, 0); },
     teleport(x, y, z) {
       body.setTranslation({ x, y: y + FOOT_OFFSET + 0.1, z }, true);
+      safe.x = x; safe.y = y + FOOT_OFFSET + 0.1; safe.z = z; firmT = 0;
       state.mode = 'ground';
       controller.enableSnapToGround(0.4);
     },

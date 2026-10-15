@@ -98,7 +98,13 @@ async function start() {
     const g = land.height(x, z);
     downRay.origin = { x, y: yHint != null ? yHint + 0.45 : g + 0.05, z };
     const hit = physics.castRay(downRay, 6, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
-    return hit ? downRay.origin.y - hit.timeOfImpact : g;
+    if (hit) return downRay.origin.y - hit.timeOfImpact;
+    // Nothing below: the solid ground can sit a little above the smooth
+    // height (coarse ground between the areas), so look from higher up
+    // rather than put anyone under it.
+    downRay.origin = { x, y: Math.max(g, yHint ?? g) + 4, z };
+    const up = physics.castRay(downRay, 12, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+    return up ? downRay.origin.y - up.timeOfImpact : g;
   }
   const input = createInput(canvas);
 
