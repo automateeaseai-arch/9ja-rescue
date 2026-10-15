@@ -355,6 +355,7 @@ export async function createPlayer(scene, physics, spawn, opts = {}) {
   }
 
   function update(dt, input, cameraYaw, cameraPitch = 0.2) {
+    if (!model) return;   // before the mission has loaded the character
     if (state.mode === 'drive') { updateRide(dt, input, cameraPitch); return; }
     const s = input.state;
     const mag = state.disabled ? 0 : Math.min(1, Math.hypot(s.moveX, s.moveY));

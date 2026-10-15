@@ -11,18 +11,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { loadGlb, makeInPlace } from './player.js';
 import { loadSharedAnims, retarget } from './anims.js';
 
-export const PERSONAS = [
-  { name: 'Bus Driver', url: 'models/hostages/Hostage_01_BusDriver.glb' },
-  { name: 'Cassava Trader', url: 'models/hostages/Hostage_02_CassavaTrader.glb' },
-  { name: 'Lecturer', url: 'models/hostages/Hostage_03_Lecturer.glb' },
-  { name: 'Doctor', url: 'models/hostages/Hostage_04_Doctor.glb' },
-  { name: 'Civil Service Director', url: 'models/hostages/Hostage_05_CivilServiceDirector.glb' },
-  { name: 'NYSC corps member (female)', url: 'models/hostages/Hostage_06_NYSC_Female.glb' },
-  { name: 'NYSC corps member (male)', url: 'models/hostages/Hostage_07_NYSC_Male.glb' },
-  { name: 'Student', url: 'models/hostages/Hostage_08_Student.glb' },
-  { name: 'Kano gold seller', url: 'models/hostages/Hostage_09_KanoGoldSeller.glb' },
-  { name: 'Businessman', url: 'models/hostages/Hostage_10_Businessman.glb' },
-];
+import { PERSONAS } from './personas.js';
+export { PERSONAS };
 
 const GAP = 1.7;          // metres between people in the line
 const WALK_SPEED = 1.7;

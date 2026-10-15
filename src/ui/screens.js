@@ -13,10 +13,14 @@ import './menu.css';
 import { auth, emailProblem, passwordProblem } from './auth.js';
 import { setUser, saveAccount, saveFailed } from '../save.js';
 import * as Chars from './characters.js';
-import { showPreview, hidePreview, setPreviewSkin } from './preview.js';
+// The 3D preview (screens 08/09) brings the 3D engine: loaded when first needed.
+const previewMod = () => import('./preview.js');
+const showPreview = (...a) => previewMod().then((m) => m.showPreview(...a));
+const hidePreview = () => { previewMod().then((m) => m.hidePreview()); };
+const setPreviewSkin = (s) => { previewMod().then((m) => m.setPreviewSkin(s)); };
 import { logo } from './logo.js';
 import { RULES, ARRIVALS, missionName } from '../config.js';
-import { PERSONAS } from '../hostages.js';
+import { PERSONAS } from '../personas.js';
 import { sound } from '../sound.js';
 import { cloud } from '../cloud.js';
 import { startStats } from '../stats.js';
@@ -153,7 +157,10 @@ export function createScreens() {
       if (button?.isConnected) { button.classList.remove('busy'); button.disabled = false; button.innerHTML = keep; }
     }
   }
-  const preload = (...keys) => keys.forEach((k) => { const i = new Image(); i.src = k.includes('/') ? k : BG(k); });
+  // Fetches pictures ahead of time; resolves when they have arrived (or failed).
+  const preload = (...keys) => Promise.all(keys.map((k) => new Promise((done) => {
+    const i = new Image(); i.onload = i.onerror = done; i.src = k.includes('/') ? k : BG(k);
+  })));
 
   // ------------------------------------------------------------- screens
   const SCREENS = {
@@ -514,19 +521,28 @@ export function createScreens() {
     if (S.id !== '01') return;
     const pct = Math.round(S.splash.p * 100);
     $('#sp-fill').style.width = `${pct}%`;
-    $('#sp-text').textContent = `${S.splash.text} ${pct}%`;
+    $('#sp-text').textContent = pct > 0 ? `${S.splash.text} ${pct}%` : `${S.splash.text}…`;
     if (S.splash.error) {
       alertBox('#sp-err', `${esc(S.splash.error)}<div style="margin-top:.5rem">${btn('Try again', 'reload', { cls: 'small' })}</div>`);
     }
   }
+
+  // The game itself (3D) arrives later (gameReady); screens from Home onwards
+  // wait for it on the splash, which then shows its download progress.
+  let gameWaiters = [];
+  const whenGame = () => (S.game ? Promise.resolve() : new Promise((r) => gameWaiters.push(r)));
+  let startedDone;
+  const started = new Promise((r) => { startedDone = r; });
 
   async function afterSplash() {
     try { await auth.init(); await cloud.init(auth.app); startStats(auth.app).catch(() => {}); } catch (e) {
       console.error(e);
       S.splash.error = 'Could not reach the account service. Check your internet connection.';
       paintSplash();
+      startedDone();
       return;
     }
+    startedDone();
     if (handleLink()) return;
     const u = auth.current();
     if (u) return signedIn(u);
@@ -542,6 +558,11 @@ export function createScreens() {
       if (S.id === '01') { S.splash.text = 'Loading your progress…'; paintSplash(); }
       if ((await cloud.pull()) === 'offline') toast('No connection: playing with the progress saved on this phone. It will be saved online later.');
     }
+    if (!S.game) {
+      S.splash.text = 'Getting the game ready';
+      show('01');
+      await whenGame();
+    }
     S.game.mission.reloadAccount();
     S.setup = null;
     show('04');
@@ -552,7 +573,6 @@ export function createScreens() {
     const m = /^#(verify|reset)=([a-f0-9]+)$/.exec(location.hash);
     if (!m) return false;
     history.replaceState(null, '', location.pathname + location.search);
-    if (!S.game) return false;
     if (m[1] === 'verify') {
       try {
         const r = auth.verifyLink(m[2]);
@@ -964,9 +984,15 @@ export function createScreens() {
   }
   actions.retryLoad = () => show('13', { kind: S.params.kind });
 
-  // First screen.
+  // First screen: the splash until the sign-in service is ready (the game's
+  // own download starts after that, main.js).
+  // On a slow line the first screens' pictures come first: the splash and
+  // Welcome backgrounds and the logo, then the next screens'.
   show('01');
-  preload('02', '03A', '04');
+  const firstPics = preload('02', 'ui/logo.webp');
+  afterSplash();
+  const firstScreen = Promise.all([started, firstPics]);
+  firstScreen.then(() => preload('01', '03A', '04'));   // 01 again: the splash doubles as the wait for the game
 
   return {
     get playing() { return !!S.game?.playing; },
@@ -980,13 +1006,17 @@ export function createScreens() {
       if (S.id === '01') { S.splash.error = msg; paintSplash(); return; }
       toast(msg, true);
     },
+    // Resolves once the first real screen is up with its pictures (the game's
+    // own download waits for this so it doesn't slow them down).
+    started: firstScreen,
     gameReady(game) {
       S.game = game;
       S.splash.ready = true;
       S.splash.p = 1;
       S.splash.text = 'Ready';
       paintSplash();
-      setTimeout(afterSplash, 350);
+      const w = gameWaiters; gameWaiters = [];
+      setTimeout(() => w.forEach((f) => f()), 350);
     },
     show,
     ownsError: () => false,
