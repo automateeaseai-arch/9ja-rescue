@@ -19,6 +19,7 @@ import { RULES, ARRIVALS, missionName } from '../config.js';
 import { PERSONAS } from '../hostages.js';
 import { sound } from '../sound.js';
 import { cloud } from '../cloud.js';
+import { startStats } from '../stats.js';
 import { settings as gameSettings } from '../settings.js';
 const openSettings = (cb) => gameSettings.open(cb);
 
@@ -518,7 +519,7 @@ export function createScreens() {
   }
 
   async function afterSplash() {
-    try { await auth.init(); await cloud.init(auth.app); } catch (e) {
+    try { await auth.init(); await cloud.init(auth.app); startStats(auth.app).catch(() => {}); } catch (e) {
       console.error(e);
       S.splash.error = 'Could not reach the account service. Check your internet connection.';
       paintSplash();

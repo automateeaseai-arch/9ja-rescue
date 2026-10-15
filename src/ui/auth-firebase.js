@@ -15,7 +15,7 @@ import { getAnalytics, isSupported, logEvent } from 'firebase/analytics';
 import { AuthError, emailProblem, passwordProblem } from './auth.js';
 import { setTracker } from '../analytics.js';
 
-const CONFIG = {
+export const CONFIG = {
   apiKey: 'AIzaSyCIznaxc92v2b0s_luJkyjq8EMVgH-FWHk',
   authDomain: 'ja-rescue.firebaseapp.com',
   projectId: 'ja-rescue',
@@ -29,7 +29,7 @@ const CONFIG = {
 // window says "continue to auth.9jarescue.app"; elsewhere, or if that address
 // doesn't answer yet (new certificate), it falls back to the default.
 const OWN_AUTH = 'auth.9jarescue.app';
-async function pickAuthDomain() {
+export async function pickAuthDomain() {
   if (!/(^|\.)9jarescue\.app$/.test(location.hostname)) return CONFIG.authDomain;
   try {
     const ok = await Promise.race([
