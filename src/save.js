@@ -77,6 +77,26 @@ export function setUser(id) {
 }
 export const currentUser = () => uid;
 
+// Guest play (no account): records are kept under ':guest' on this phone only.
+// The first account that signs in with no progress of its own (after the
+// online copy is fetched) takes the guest's progress, so nothing is lost.
+const GUEST = '9ja.guest';
+export const isGuestMode = () => { try { return localStorage.getItem(GUEST) === '1'; } catch { return false; } };
+export function setGuestMode(on) { try { if (on) localStorage.setItem(GUEST, '1'); else localStorage.removeItem(GUEST); } catch { /* ignore */ } }
+export function claimGuest() {
+  if (!uid || localStorage.getItem(key(ACCOUNT)) != null) return false;
+  let moved = false;
+  for (const k of Object.values(RECORDS)) {
+    const text = localStorage.getItem(`${k}:guest`);
+    if (text == null) continue;
+    localStorage.setItem(key(k), text);
+    localStorage.removeItem(`${k}:guest`);
+    stamp(k);
+    moved = true;
+  }
+  return moved;
+}
+
 export function loadAccount() {
   const a = read(key(ACCOUNT)) ?? {};
   return {

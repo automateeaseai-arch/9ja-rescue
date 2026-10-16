@@ -11,7 +11,7 @@
 // reference set); every control is a real component.
 import './menu.css';
 import { auth, emailProblem, passwordProblem } from './auth.js';
-import { setUser, saveAccount, saveFailed } from '../save.js';
+import { setUser, saveAccount, saveFailed, isGuestMode, setGuestMode, claimGuest } from '../save.js';
 import * as Chars from './characters.js';
 // The 3D preview (screens 08/09) brings the 3D engine: loaded when first needed.
 const previewMod = () => import('./preview.js');
@@ -36,6 +36,7 @@ const BG = (k) => `ui/bg/${k}.webp`;
 const svg = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 // Google's "G" mark, for the Continue with Google button.
 const GOOGLE_G = '<svg class="g-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+const guestBtn = () => `<div class="foot2"><button class="m-link" data-act="guest">Play as guest</button><span class="m-sub" style="margin:0"> &nbsp;no sign-up</span></div>`;
 const googleBtn = () => (auth.canGoogle ? `<div class="m-or"><span>or</span></div>${btn('Continue with Google', 'google', { kind: 'google', cls: 'block', icon: GOOGLE_G })}` : '');
 
 const I = {
@@ -177,7 +178,7 @@ export function createScreens() {
     '02': {
       bg: '02', pos: 'left center', cls: 's02',
       html: () => `<div class="m-panel m-side">${logo()}<h1>Your mission starts here</h1><div class="tag">Explore. Rescue. Bring them home.</div>
-        ${btn('Create account', 'go', { data: 'data-to="03"', cls: 'block' })}${btn('Sign in', 'go', { kind: 'outline', data: 'data-to="03A"', cls: 'block' })}${googleBtn()}
+        ${btn('Create account', 'go', { data: 'data-to="03"', cls: 'block' })}${btn('Sign in', 'go', { kind: 'outline', data: 'data-to="03A"', cls: 'block' })}${googleBtn()}${guestBtn()}
         <div class="foot">Single player &nbsp;•&nbsp; Landscape experience</div></div>`,
     },
 
@@ -209,7 +210,7 @@ export function createScreens() {
           <div class="actions">${btn('Sign in', null, { type: 'submit', cls: 'block' })}</div>
         </form>${googleBtn()}
         <div class="foot2"><button class="m-link muted" data-act="go" data-to="03C">Forgot password?</button></div><hr class="m-rule">
-        <div class="foot2"><span>Don't have an account? <button class="m-link" data-act="go" data-to="03">Create account</button></span></div>
+        <div class="foot2"><span>Don't have an account? <button class="m-link" data-act="go" data-to="03">Create account</button></span></div>${guestBtn()}
         <div class="foot2">${btn('Back', 'go', { kind: 'outline', cls: 'small', icon: I.arrowL, data: 'data-to="02"' })}</div></div>`,
     },
 
@@ -266,10 +267,10 @@ export function createScreens() {
       html: () => {
         const a = account(), c = Chars.get(a.activeCharacter) ?? Chars.list()[0];
         const saved = S.game.mission.savedSummary();
-        const name = c?.name ?? S.user.email.split('@')[0];
+        const name = c?.name ?? (S.user.guest ? 'Guest' : S.user.email.split('@')[0]);
         const pic = c ? Chars.look(c.gender, c.role).portrait : null;
         return `<div class="head">${logo()}<div class="welcome">Welcome${c ? ' back' : ''},<b>${esc(name)}</b></div></div>
-        <div class="top-r">${install.can ? btn('Install game', 'install', { kind: 'outline', cls: 'small m-install', icon: I.download }) : ''}${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
+        <div class="top-r">${S.user.guest ? btn('Save progress', 'profile', { kind: 'gold', cls: 'small m-install', icon: I.save }) : ''}${install.can ? btn('Install game', 'install', { kind: 'outline', cls: 'small m-install', icon: I.download }) : ''}${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
         <div class="missions">
           ${saved ? btn(`Continue mission<small>${esc(saved.name)} • ${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
@@ -546,6 +547,7 @@ export function createScreens() {
     if (handleLink()) return;
     const u = auth.current();
     if (u) return signedIn(u);
+    if (isGuestMode()) return playAsGuest();
     show(auth.knownDevice() ? '03A' : '02');
   }
 
@@ -558,6 +560,21 @@ export function createScreens() {
       if (S.id === '01') { S.splash.text = 'Loading your progress…'; paintSplash(); }
       if ((await cloud.pull()) === 'offline') toast('No connection: playing with the progress saved on this phone. It will be saved online later.');
     }
+    // A guest who signs up keeps what they earned (only into an account with no progress yet).
+    if (claimGuest()) toast('Your guest progress is now saved to your account.');
+    setGuestMode(false);
+    await enterHome();
+  }
+
+  // Guest: no account, progress kept on this phone only (records under ':guest').
+  async function playAsGuest() {
+    setGuestMode(true);
+    S.user = { uid: null, email: null, guest: true };
+    setUser(null);
+    await enterHome();
+  }
+
+  async function enterHome() {
     if (!S.game) {
       S.splash.text = 'Getting the game ready';
       show('01');
@@ -750,6 +767,11 @@ export function createScreens() {
     },
     abandonNew() { S.game.mission.abandon(); S.setup = null; closeSheet(); show('05', { mode: 'mission' }); },
     async rankings() {
+      if (S.user.guest && cloud.enabled) {
+        sheet(`<h2 class="m-title">Rankings</h2><p>Rankings are for players with an account. Create one and your progress, including your Mission Points, comes with you.</p>
+          <div class="m-stats"><span>Your Mission Points</span><b>${fmt(account().missionPoints)}</b></div><div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}${btn('Create account', 'leaveGuest', { data: 'data-to="03"' })}</div>`);
+        return;
+      }
       if (!cloud.enabled) {
         sheet(`<h2 class="m-title">Rankings</h2><p>Rankings compare Mission Points between players online. This copy of the game plays offline, so open the online version to see them.</p>
           <div class="m-stats"><span>Your Mission Points</span><b>${fmt(account().missionPoints)}</b></div><div class="row">${btn('Close', 'closeSheet', { kind: 'outline' })}</div>`);
@@ -776,6 +798,14 @@ export function createScreens() {
     },
     profile() {
       const a = account();
+      if (S.user.guest) {
+        sheet(`<h2 class="m-title">Playing as a guest</h2><p>Your progress is saved only on this phone. If you clear your browser or change phones, it is lost. Create an account to keep it${cloud.enabled ? ', play on any phone and join the Rankings' : ''}: everything you have earned comes with you.</p>
+          <div class="m-stats"><span>Rescue Points (RP)</span><b>${fmt(a.rp)}</b><span>Mission Points (MP)</span><b>${fmt(a.missionPoints)}</b>
+          <span>Missions completed</span><b>${fmt(a.missionsCompleted)}</b><span>Captives rescued</span><b>${fmt(a.captivesRescued)}</b></div>
+          <div class="row">${btn('Sign in', 'leaveGuest', { kind: 'outline', data: 'data-to="03A"' })}${btn('Create account', 'leaveGuest', { data: 'data-to="03"' })}</div>
+          <div class="row">${btn('Close', 'closeSheet', { kind: 'outline', cls: 'small' })}</div>`);
+        return;
+      }
       sheet(`<h2 class="m-title">Profile</h2><p class="m-sub">${esc(S.user.email)} • ${auth.provider === 'device' ? 'account on this device' : (cloud.state === 'synced' ? 'progress saved online' : cloud.state === 'syncing' ? 'saving online…' : 'progress on this phone; will save online when connected')}</p>
         <div class="m-stats"><span>Rescue Points (RP)</span><b>${fmt(a.rp)}</b><span>Mission Points (MP)</span><b>${fmt(a.missionPoints)}</b>
         <span>Missions completed</span><b>${fmt(a.missionsCompleted)}</b><span>Captives rescued</span><b>${fmt(a.captivesRescued)}</b>
@@ -788,6 +818,8 @@ export function createScreens() {
       if (!sound.muted) sound.ui('select');
       rerender();
     },
+    guest() { playAsGuest(); },
+    leaveGuest(b) { closeSheet(); S.user = null; S.setup = null; show(b.dataset.to); },
     async signOut() { await cloud.flush().catch(() => {}); auth.signOut(); setUser(null); S.user = null; S.setup = null; closeSheet(); show('03A', { notice: 'Signed out.' }); },
 
     // Characters

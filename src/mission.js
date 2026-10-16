@@ -26,7 +26,7 @@ import { install } from './install.js';
 import { shareRescue, resetShare, prepareShare } from './share.js';
 import { track } from './analytics.js';
 import { RULES, SITES, ARRIVALS, missionName, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
-import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft } from './save.js';
+import { loadAccount, saveAccount, loadMission, saveMission, clearMission, saveFailed, loadDraft, saveDraft, clearDraft, currentUser } from './save.js';
 import { PERSONAS } from './hostages.js';
 import { sound } from './sound.js';
 import { CAMP } from './world.js';
@@ -498,6 +498,7 @@ export function createMission(ctx) {
       <div>Captives rescued: <b>${list.length}</b> (${list.map((c) => c.name).join(', ')})</div>
       <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
       <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
+    if (!currentUser()) ui.resultsBody.insertAdjacentHTML('beforeend', '<div class="small guest-note">Playing as a guest: this progress is only on this phone. Create an account from <b>Save progress</b> on Home to keep it.</div>');
     install.offerCard(ui.resultsBody, account.missionsCompleted);
     const shareBtn = document.getElementById('results-share'), cardImg = document.getElementById('results-card');
     resetShare(shareBtn, cardImg);
