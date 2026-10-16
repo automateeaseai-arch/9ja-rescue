@@ -178,7 +178,7 @@ export function createScreens() {
     '02': {
       bg: '02', pos: 'left center', cls: 's02',
       html: () => `<div class="m-panel m-side">${logo()}<h1>Your mission starts here</h1><div class="tag">Explore. Rescue. Bring them home.</div>
-        ${btn('Create account', 'go', { data: 'data-to="03"', cls: 'block' })}${btn('Sign in', 'go', { kind: 'outline', data: 'data-to="03A"', cls: 'block' })}${googleBtn()}${guestBtn()}
+        ${btn('Play as guest', 'guest', { cls: 'block' })}${btn('Create account', 'go', { kind: 'green', data: 'data-to="03"', cls: 'block' })}${btn('Sign in', 'go', { kind: 'outline', data: 'data-to="03A"', cls: 'block' })}${googleBtn()}
         <div class="foot">Single player &nbsp;•&nbsp; Landscape experience</div></div>`,
     },
 
