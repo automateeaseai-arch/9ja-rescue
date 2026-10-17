@@ -7,7 +7,10 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RULES } from './config.js';
 
 // Fire held: rounds of 3 bullets, 0.07 s apart, with 0.4 s between rounds.
-const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4;
+// Every press fires a round (owner, 17 Oct: "it should always fire every time
+// I press it"): presses are counted (up to 2 waiting), kept through a round,
+// the gap or a reload, and a tapped round may follow 0.15 s after the last.
+const BURST = 3, BULLET_GAP = 0.07, BURST_GAP = 0.4, TAP_GAP = 0.15, MAX_QUEUED = 2;
 const SHOT_DAMAGE = RULES.playerBulletDamage;   // five hits defeat a hostile
 const HEAD_DAMAGE = RULES.playerBulletDamage;
 // Melee by attack: punch and kick 1 HP, cutlass slash 2 HP (as a bullet).
@@ -32,7 +35,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
   };
   ui.health.hidden = false;
   const st = {
-    burstLeft: 0, health: RULES.startHealth, sinceHit: 99, cooldown: 0, hurt: 0, hitMark: 0, shots: 0, hits: 0, takedowns: 0,
+    burstLeft: 0, queued: 0, health: RULES.startHealth, sinceHit: 99, cooldown: 0, hurt: 0, hitMark: 0, shots: 0, hits: 0, takedowns: 0,
     mag: RULES.magazine, reserve: RULES.startReserve, reload: 0,
   };
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
@@ -149,22 +152,25 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
       }
     }
     const firing = input ? input.state.fire : player.state.aiming;
-    // A tap on Fire always fires a full round (owner, 14 Oct: quick phone taps
-    // used to end before the rifle came up, so nothing fired). The tap is
-    // remembered for 0.6 s, the rifle stays up until the round is done, and
-    // letting go mid-round no longer cuts it short.
-    if (firing && !lastFire && (input?.state.weapon ?? 'gun') === 'gun') st.pending = 0.6;
+    // Each press queues a round, even a tap too short to be seen in a frame
+    // (the rifle comes up first; letting go never cuts a round short).
+    const gun = (input?.state.weapon ?? 'gun') === 'gun';
+    let presses = input?.state.firePresses ?? 0;
+    if (input) input.state.firePresses = 0;
+    if (!presses && firing && !lastFire) presses = 1;   // test hook: held without a press event
     lastFire = firing;
-    st.pending = Math.max(0, (st.pending ?? 0) - dt);
-    player.state.holdAim = st.pending > 0 || st.burstLeft > 0;
-    const wants = firing || st.pending > 0 || st.burstLeft > 0;
+    if (!gun || (st.mag <= 0 && st.reserve <= 0) || player.state.disabled || player.state.mode !== 'ground') st.queued = 0;
+    else if (presses) st.queued = Math.min(MAX_QUEUED, (st.queued ?? 0) + presses);
+    player.state.holdAim = st.queued > 0 || st.burstLeft > 0;
+    const wants = firing || st.queued > 0 || st.burstLeft > 0;
     st.cooldown -= dt;
     if (st.burstLeft > 0 && !player.state.aiming) { st.burstLeft = 0; st.cooldown = BURST_GAP; }
-    if (wants && player.state.aiming && player.aimWeight > 0.35 && st.cooldown <= 0 && st.reload <= 0) {
-      st.pending = 0;
-      if (st.mag <= 0) startReload();   // empty: reload automatically
+    // A new round from a press may start sooner than one from holding Fire.
+    const ready = st.burstLeft <= 0 && st.queued > 0 ? st.cooldown <= BURST_GAP - TAP_GAP : st.cooldown <= 0;
+    if (wants && player.state.aiming && player.aimWeight > 0.35 && ready && st.reload <= 0) {
+      if (st.mag <= 0) startReload();   // empty: reload automatically, the press waits
       else {
-        if (st.burstLeft <= 0) st.burstLeft = BURST;
+        if (st.burstLeft <= 0) { st.burstLeft = BURST; if (st.queued > 0) st.queued--; }
         fire();
         st.burstLeft--;
         st.cooldown = st.burstLeft > 0 ? BULLET_GAP : BURST_GAP;

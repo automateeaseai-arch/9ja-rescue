@@ -6,6 +6,7 @@ export function createInput(canvas) {
     run: false,
     jump: false,     // consumed by the player each time it is read
     fire: false,     // held: aim and fire
+    firePresses: 0,  // presses since the game last looked (a very short tap can fall between frames)
     punch: false,    // consumed each time it is read
     crouch: false,   // toggles crouching; consumed each time it is read
     throw: false,    // throws a grenade; consumed each time it is read
@@ -40,7 +41,7 @@ export function createInput(canvas) {
     if (e.code === 'Digit3') setWeapon('unarmed');
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) state.pause = true;
     // Unarmed and cutlass: the attack key punches or slashes.
-    if ((e.code === 'KeyF') && !e.repeat && state.weapon !== 'gun') state.punch = true;
+    if ((e.code === 'KeyF') && !e.repeat) { if (state.weapon !== 'gun') state.punch = true; else state.firePresses++; }
   });
   const listeners = [];
   function setWeapon(w) {
@@ -54,7 +55,7 @@ export function createInput(canvas) {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 2) return;
-    if (state.weapon !== 'gun') state.punch = true; else mouseFire = true;
+    if (state.weapon !== 'gun') state.punch = true; else { mouseFire = true; state.firePresses++; }
   });
   addEventListener('mouseup', (e) => { if (e.button === 2) mouseFire = false; });
   addEventListener('blur', () => keys.clear());
@@ -147,7 +148,7 @@ export function createInput(canvas) {
   // Drag-to-aim: sliding the thumb from the Fire button steers the aim while firing.
   let fireDrag = null;
   fireBtn.addEventListener('touchstart', (e) => {
-    if (state.weapon !== 'gun') state.punch = true; else touchFire = true;
+    if (state.weapon !== 'gun') state.punch = true; else { touchFire = true; state.firePresses++; }
     const t = e.changedTouches[0];
     fireDrag = { id: t.identifier, x: t.clientX, y: t.clientY };
     e.preventDefault();
