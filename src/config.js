@@ -15,7 +15,7 @@ export const RULES = {
   grenadeDamage: 4,
   magazine: 10,
   startReserve: 50,        // 10 loaded + 50 reserve
-  reloadTime: 2.0,
+  reloadTime: 1.2,         // owner, 17 Oct: the gun felt slow (was 2 s)
   ammoPack: 10,            // old saved missions' ammo packs
   ammoCrate: 30,           // each of the four ammunition boxes (owner, 14 Oct: 5 → 30)
   ammoDrop: 10,            // bullets left by each defeated hostile (owner, 14 Oct)

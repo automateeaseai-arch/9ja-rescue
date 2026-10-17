@@ -209,3 +209,17 @@ body[data-buttons=large] :is(.touch-ctrl, #interact-btn, #ammo, #weapons) { zoom
 .share-line #results-card { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; border: 1.5px solid #f2c443; align-self: center; }
 .share-line button { flex: 1; }
 .guest-note { color: #f2c443; opacity: 1; }
+/* Words over heads (popups.js) */
+#popups { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
+.popup { position: absolute; left: 0; top: 0; white-space: nowrap; font: 800 15px/1.15 system-ui, sans-serif; text-align: center;
+  padding: 5px 10px; border-radius: 10px; will-change: transform, opacity; }
+.popup small { display: block; font-size: 11px; font-weight: 600; opacity: 0.8; }
+.popup.shout { background: #fff7ea; color: #a3220f; border: 2px solid #a3220f; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.popup.shout::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -6px; border: 6px solid transparent; border-top-color: #a3220f; border-bottom: 0; }
+.popup.thanks { background: #fff7ea; color: #1f5a2c; border: 2px solid #2e8b45; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.popup.thanks::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -6px; border: 6px solid transparent; border-top-color: #2e8b45; border-bottom: 0; }
+.popup.score { color: #ffd23c; font-size: 20px; text-shadow: 0 2px 3px rgba(0,0,0,.8); }
+/* A stronger hit: the crosshair kicks and an X flashes over it. */
+#crosshair.hit { border-color: #ff5a3c; animation: hitkick 0.15s ease-out; }
+#crosshair.hit::before { content: '✕'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -52%); color: #ff5a3c; font: 900 26px/1 system-ui, sans-serif; text-shadow: 0 0 3px rgba(0,0,0,.7); }
+@keyframes hitkick { from { scale: 1.45; } to { scale: 1; } }

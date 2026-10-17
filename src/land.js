@@ -7,6 +7,7 @@
 // on through it. The light and haze shift gradually from the warm dry north
 // to the humid valley as the player walks south.
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { groundHeight, roadX, riverX, WORLD_SIZE } from './world.js';
 import { makeRandom, fbm2, noise2, smooth, clamp, lerp } from './kit/util.js';
 import { buildTerrain } from './kit/terrain.js';
@@ -141,6 +142,7 @@ export function buildLand(scene, physics, { valleyH, phone = false }) {
     place(scene, physics, boulder, rocks, W.height, { lowOnly: false });
   }).catch((err) => console.error(err));
 
+  buildEdge(scene, physics, W.height);
   return { height: W.height, groundAt, roadXAt: W.roadXAt };
 }
 
@@ -164,3 +166,38 @@ export function createAtmosphere({ scene, world, phone }) {
     u.uHorizon.value.copy(sav.horizon).lerp(val.horizon, t);
   };
 }
+
+// The world's outer edge (owner, 17 Oct: "a place with no environment where
+// you fall through"): past the last hills there was nothing, so the player
+// could walk off into the void. Tall invisible walls a little inside the edge
+// keep everyone (and vehicles) in, and wide plain ground beyond it, just under
+// the lowest edge height, fills the view instead of empty sky.
+const EDGE_IN = 14;
+function buildEdge(scene, physics, height) {
+  let low = Infinity;
+  const { minX, maxX, minZ, maxZ } = BOUNDS;
+  for (let t = 0; t <= 1; t += 0.005) {
+    for (const [x, z] of [[lerp(minX, maxX, t), minZ], [lerp(minX, maxX, t), maxZ], [minX, lerp(minZ, maxZ, t)], [maxX, lerp(minZ, maxZ, t)]]) low = Math.min(low, height(x, z));
+  }
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+  // A ring: only outside the map (inside, rivers and lakes dip lower than it).
+  const shape = new THREE.Shape([[-3000, -3000], [3000, -3000], [3000, 3000], [-3000, 3000]].map(([x, y]) => new THREE.Vector2(cx + x, -cz + y)));
+  const m = 4;
+  shape.holes.push(new THREE.Path([[minX + m, minZ + m], [minX + m, maxZ - m], [maxX - m, maxZ - m], [maxX - m, minZ + m]].map(([x, z]) => new THREE.Vector2(x, -z))));
+  const ground = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshLambertMaterial({ color: '#a8925c' }));
+  ground.rotation.x = -Math.PI / 2;   // shape y → world -z
+  ground.position.y = low - 1.2;
+  ground.receiveShadow = false;
+  scene.add(ground);
+  const H = 300, T = 2;
+  const x0 = minX + EDGE_IN, x1 = maxX - EDGE_IN, z0 = minZ + EDGE_IN, z1 = maxZ - EDGE_IN;
+  const walls = [
+    [(x1 - x0) / 2 + T, H, T, (x0 + x1) / 2, z0 - T], [(x1 - x0) / 2 + T, H, T, (x0 + x1) / 2, z1 + T],
+    [T, H, (z1 - z0) / 2 + T, x0 - T, (z0 + z1) / 2], [T, H, (z1 - z0) / 2 + T, x1 + T, (z0 + z1) / 2],
+  ];
+  for (const [hx, hy, hz, x, z] of walls) {
+    const body = physics.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, low - 20 + hy, z));
+    physics.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz), body);
+  }
+}
+export const PLAY_AREA = { x0: BOUNDS.minX + EDGE_IN, x1: BOUNDS.maxX - EDGE_IN, z0: BOUNDS.minZ + EDGE_IN, z1: BOUNDS.maxZ - EDGE_IN };

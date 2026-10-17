@@ -24,7 +24,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { loadGlb, makeInPlace } from './player.js';
 import { loadSharedAnims, retarget, upperBody, lowerBody } from './anims.js';
-import { groundHeight } from './world.js';
+import { groundHeight, seeThrough } from './world.js';
 import { AI, RULES } from './config.js';
 
 const HOSTILES = [
@@ -147,9 +147,10 @@ export function spawnHostiles(scene, opts = {}) {
     u.collider = physics.createCollider(RAPIER.ColliderDesc.capsule(HALF, RADIUS), u.body);
   }
   function place(u, r) {
-    const [px, pz, yaw = 0] = r.post;
+    const [px, pz, yaw0 = 0] = r.post;
     const [x, z] = r.at ?? [px, pz];
     const y = heightAt(x, z);
+    const yaw = r.patrol ? yaw0 : openYaw(px, heightAt(px, pz), pz, yaw0);
     Object.assign(u, {
       id: r.id, group: r.group, patrol: r.patrol ?? null, beat: 0, wait: 0,
       post: new THREE.Vector3(px, heightAt(px, pz), pz), postYaw: yaw,
@@ -188,7 +189,9 @@ export function spawnHostiles(scene, opts = {}) {
   const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
   const v = new THREE.Vector3(), toP = new THREE.Vector3(), muzzle = new THREE.Vector3(), aimAt = new THREE.Vector3();
 
-  // Clear view between two points (walls, rocks, trees and ground block it; people don't).
+  // Clear view between two points (walls, rocks, trees and ground block it;
+  // people, stick fences and lattice walls don't).
+  const solid = (c) => !seeThrough.has(c.handle);
   function clearLine(from, to) {
     v.subVectors(to, from);
     const d = v.length();
@@ -196,14 +199,36 @@ export function spawnHostiles(scene, opts = {}) {
     v.divideScalar(d);
     ray.origin = { x: from.x, y: from.y, z: from.z };
     ray.dir = { x: v.x, y: v.y, z: v.z };
-    return !physics.castRay(ray, d - 0.2, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
+    return !physics.castRay(ray, d - 0.2, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC, undefined, undefined, undefined, solid);
   }
 
+  // Seen if the chest or the head is in view (owner, 17 Oct: guards stood
+  // still with the player in front of them; half-hidden still counts).
   const eye = new THREE.Vector3(), chest = new THREE.Vector3();
   function canSee(u, playerPos) {
     eye.copy(u.model.position).y += 1.6;
     chest.copy(playerPos).y += 1.2;
+    if (clearLine(eye, chest)) return true;
+    chest.y += 0.45;
     return clearLine(eye, chest);
+  }
+
+  // A post facing a rock or wall is turned to the most open view nearby
+  // (some posts stared at a boulder and only saw the player from the side).
+  const far = new THREE.Vector3();
+  function openYaw(x, y, z, yaw) {
+    eye.set(x, y + 1.6, z);
+    const clearFor = (a) => {
+      for (const d of [12, 8, 5, 3]) { far.set(x + Math.sin(a) * d, y + 1.4, z + Math.cos(a) * d); if (clearLine(eye, far)) return d; }
+      return 0;
+    };
+    if (clearFor(yaw) >= 8) return yaw;
+    let best = yaw, bestScore = -1;
+    for (let i = 1; i <= 12; i++) for (const s of [1, -1]) {
+      const a = yaw + s * i * Math.PI / 12, score = clearFor(a) - i * 0.15;
+      if (score > bestScore) { bestScore = score; best = a; }
+    }
+    return best;
   }
 
   let viewK = 1;
@@ -217,9 +242,18 @@ export function spawnHostiles(scene, opts = {}) {
     return (Math.sin(yaw) * toP.x + Math.cos(yaw) * toP.z) / d > VIEW_COS;
   }
 
+  // Shouts (popups.js): one guard at a time, each at most every 8 s.
+  let lastShout = -99;
+  function shout(u, kind) {
+    const now = performance.now() / 1000;
+    if (now - lastShout < 1.5 || now - (u.shoutAt ?? -99) < 8) return;
+    lastShout = u.shoutAt = now;
+    opts.onShout?.(u, kind);
+  }
+
   function alert(u, playerPos) {
     if (u.state === 'down' || !u.body) return;
-    if (u.state !== 'alert') u.shotTimer = AI.reaction; // a moment to raise the rifle
+    if (u.state !== 'alert') { u.shotTimer = AI.reaction; shout(u, 'alert'); } // a moment to raise the rifle
     u.state = 'alert';
     u.awareness = 1;
     u.sinceSeen = 0;
@@ -236,6 +270,7 @@ export function spawnHostiles(scene, opts = {}) {
       const d = u.model.position.distanceTo(pos);
       if (d > radius) continue;
       if (d < AI.hearAlert) { alert(u, pos); continue; }
+      if (u.state !== 'investigate') shout(u, 'heard');
       u.state = 'investigate';
       u.heard = (u.heard ?? new THREE.Vector3()).set(pos.x + (Math.random() - 0.5) * 6, pos.y, pos.z + (Math.random() - 0.5) * 6);
       u.investigate = AI.investigateTime;

@@ -5,6 +5,7 @@ import { createPlayer, loadCharacter, downloadStats } from './player.js';
 import { createInput } from './input.js';
 import { spawnHostiles } from './hostiles.js';
 import { createFx } from './fx.js';
+import { createPopups, SHOUTS, THANKS, pick } from './popups.js';
 import { sound } from './sound.js';
 import { settings } from './settings.js';
 import { createAmbience } from './ambience.js';
@@ -15,7 +16,7 @@ import { createVehicles } from './vehicles.js';
 import { createAirDrop } from './airdrop.js';
 import { createCaptives } from './hostages.js';
 import { createMission } from './mission.js';
-import { SITES } from './config.js';
+import { SITES, RULES } from './config.js';
 import { buildCamp } from './camp.js';
 import { buildDss } from './dss.js';
 import { buildValley, prepareValley } from './valley/build.js';
@@ -143,20 +144,29 @@ async function start() {
   const siteCentre = toWorld(SITES[0].centre);
   const crouchBtn = document.getElementById('crouch-btn');
   const fx = createFx(scene);
+  const popups = createPopups(camera);
+  const above = (o, h) => () => o.position.clone().setY(o.position.y + h);
   const ambience = createAmbience({ waterAt });
   let combat = null, mission = null;
   // Ten hostiles; the mission places them (four roaming, six at the site).
   const hostiles = spawnHostiles(scene, {
     heightAt: surfaceAt, physics, fx, site: { x: siteCentre[0], z: siteCentre[1] },
     onShootPlayer: (damage) => combat?.hurt(damage),
-    onDefeated: (u) => mission?.onDefeated(u),
+    onDefeated: (u) => {
+      mission?.onDefeated(u);
+      popups.show(above(u.model, 2.1), `+${RULES.ammoDrop} ammo`, { kind: 'score', secs: 1.3, lift: 0.9 });
+    },
+    onShout: (u, kind) => popups.show(above(u.model, 2.25), pick(SHOUTS[kind]), { kind: 'shout', secs: 2.2 }),
   });
   combat = createCombat({
     physics, camera, player, hostiles, fx, isTouch: input.isTouch, onDown: () => mission?.onDown(),
     // Where the crosshair is, in screen units -1..1 (it can be dragged off centre while aiming).
     aimNdc: () => ({ x: crossOff.x / (innerWidth / 2), y: -crossOff.y / (innerHeight / 2) }),
   });
-  const captives = createCaptives(scene, { heightAt: surfaceAt, onDiscover: (c) => mission?.onDiscover(c) });
+  const captives = createCaptives(scene, {
+    heightAt: surfaceAt, onDiscover: (c) => mission?.onDiscover(c),
+    onFreed: (c) => popups.show(above(c.model, 2.0), pick(THANKS)(c.first ?? c.name, c.name), { kind: 'thanks', secs: 3.5 }),
+  });
   grenades = createGrenades({ scene, physics, camera, player, hostiles, fx, waterAt, hurtPlayer: (n) => combat.hurt(n) });
   const throwBtn = document.getElementById('throw-btn');
   // Pickup truck and motorbike: parked near the arrival when owned.
@@ -512,6 +522,7 @@ async function start() {
     updateCulling(camera.position);
     updateCamp(dt);
     mission.update(dt, inp);
+    popups.update(dt);
     if (mission.paused) return;
     hostiles.update(dt, player);
     combat.update(dt, inp);

@@ -165,8 +165,12 @@ export function addFixedCollider(physics, desc, position, rotation) {
       .setTranslation(position.x, position.y, position.z)
       .setRotation(rotation ?? { x: 0, y: 0, z: 0, w: 1 })
   );
-  physics.createCollider(desc, body);
+  return physics.createCollider(desc, body);
 }
+
+// Colliders people can see through (stick fences, lattice walls): they stop
+// bodies but not a guard's eyes (hostiles.js line of sight).
+export const seeThrough = new Set();
 
 // Gradient sky dome with a warm golden-hour glow around the sun.
 export function buildSky(scene, sunDir, colors = {}) {

@@ -116,14 +116,17 @@ export function createFx(scene) {
       if (distance < 30) thump(v * 0.9, 95, 0.16);
       else play(v * 0.5, 500, 0.9, 0.12);
     },
-    // Magazine out, then in and the bolt pulled (the reload takes 2 s).
-    reload() {
-      play(0.3, 2400, 0.05, 0.05, 'bandpass');
-      play(0.25, 1400, 0.08, 0.35, 'bandpass');
-      play(0.35, 2600, 0.05, 1.45, 'bandpass');
-      play(0.4, 1800, 0.06, 1.75, 'bandpass');
-      play(0.3, 3000, 0.04, 1.85, 'bandpass');
+    // Magazine out, then in and the bolt pulled (spread over the reload time).
+    reload(secs = 2) {
+      const k = secs / 2;
+      play(0.3, 2400, 0.05, 0.05 * k, 'bandpass');
+      play(0.25, 1400, 0.08, 0.35 * k, 'bandpass');
+      play(0.35, 2600, 0.05, 1.45 * k, 'bandpass');
+      play(0.4, 1800, 0.06, 1.75 * k, 'bandpass');
+      play(0.3, 3000, 0.04, 1.85 * k, 'bandpass');
     },
+    // A bullet landing on a guard: a short, bright tick.
+    hitTick() { play(0.45, 3800, 0.04, 0.03, 'bandpass'); play(0.3, 1200, 0.05, 0.03); },
     // A foot or a stroke in water.
     paddle(volume = 0.3) { play(volume, 900 + Math.random() * 500, 0.22); play(volume * 0.5, 2600, 0.08); },
     punch() { play(0.6, 260, 0.12); },

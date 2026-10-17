@@ -7,7 +7,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGlb } from './player.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  CAMP, groundHeight, makeRandom, addFixedCollider, bakeModel, placeCopies, canvasTexture,
+  CAMP, groundHeight, makeRandom, addFixedCollider, seeThrough, bakeModel, placeCopies, canvasTexture,
   rockCollider, makeGranite,
 } from './world.js';
 
@@ -128,7 +128,7 @@ function buildHut(scene, physics, sticks, tarp, cx, cz, w, d, h) {
     for (const [s0, s1] of segs) {
       const c = (s0 + s1) / 2 / len;
       const p = W(ax + (bx - ax) * c, h / 2, az + (bz - az) * c);
-      addFixedCollider(physics, RAPIER.ColliderDesc.cuboid((s1 - s0) / 2, h / 2, 0.12), p, q);
+      seeThrough.add(addFixedCollider(physics, RAPIER.ColliderDesc.cuboid((s1 - s0) / 2, h / 2, 0.12), p, q).handle);
     }
   };
   wall(x0, z1, x1, z1, true); // front, with door
@@ -195,7 +195,7 @@ function buildFence(physics, sticks, ax, az, bx, bz) {
   for (const y of [0.45, 0.9, 1.25]) sticks.add(W(ax, y, az), W(bx, y, bz), 0.035);
   const ang = Math.atan2(bz - az, bx - ax);
   const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -ang);
-  addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(len / 2, 0.7, 0.1), W((ax + bx) / 2, 0.7, (az + bz) / 2), q);
+  seeThrough.add(addFixedCollider(physics, RAPIER.ColliderDesc.cuboid(len / 2, 0.7, 0.1), W((ax + bx) / 2, 0.7, (az + bz) / 2), q).handle);
 }
 
 // Jerry can: a ribbed steel body with a three-bar handle and a spout.

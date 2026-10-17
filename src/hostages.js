@@ -41,7 +41,7 @@ function bubbleTexture() {
 }
 
 // opts: heightAt(x, z, yHint), onDiscover(captive)
-export function createCaptives(scene, { heightAt, onDiscover }) {
+export function createCaptives(scene, { heightAt, onDiscover, onFreed }) {
   const units = [];
   const bubbleMat = new THREE.SpriteMaterial({ map: bubbleTexture(), transparent: true, depthTest: false, depthWrite: false, fog: false });
   let shared = null;
@@ -81,7 +81,7 @@ export function createCaptives(scene, { heightAt, onDiscover }) {
       bubble.visible = false;
       scene.add(bubble);
       const u = {
-        id: c.id, persona: c.persona, name: PERSONAS[c.persona].name, model, mixer, actions, bubble,
+        id: c.id, persona: c.persona, name: PERSONAS[c.persona].name, first: PERSONAS[c.persona].first, model, mixer, actions, bubble,
         state: c.state ?? 'bound', speed: 0, sitW: 1, crouchW: 0, cover: 0, behind: 0, destination: null,
         home: new THREE.Vector3(c.x, 0, c.z), homeYaw: c.yaw ?? 0, order: 0,
       };
@@ -224,7 +224,7 @@ export function createCaptives(scene, { heightAt, onDiscover }) {
     update,
     followers,
     // Free a captive: they stand up and follow.
-    free(u) { u.state = 'following'; u.order = order++; },
+    free(u) { u.state = 'following'; u.order = order++; onFreed?.(u); },
     // Walk to `point`, then `onArrive(u)`.
     sendTo(u, point, onArrive) { u.state = 'boarding'; u.destination = { point: point.clone(), onArrive }; },
     clearTrail() { trail.length = 0; },

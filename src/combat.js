@@ -93,6 +93,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
       st.hits++;
       hostiles.hit(best, part === 'head' ? HEAD_DAMAGE : SHOT_DAMAGE, player.position);
       st.hitMark = 0.15;
+      fx.hitTick?.();
     }
   }
 
@@ -135,7 +136,7 @@ export function createCombat({ physics, camera, player, hostiles, fx, isTouch, o
   function startReload() {
     if (st.reload > 0 || st.mag >= RULES.magazine || st.reserve <= 0) return;
     st.reload = RULES.reloadTime;
-    fx.reload();
+    fx.reload(RULES.reloadTime);
     st.burstLeft = 0;
   }
 
