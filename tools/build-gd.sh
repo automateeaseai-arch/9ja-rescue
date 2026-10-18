@@ -6,7 +6,7 @@
 #   -> <outdir>/ (index.html at the top) and <outdir>.zip to upload
 set -e
 OUT="$(realpath -m "$1")"
-ID="${2:-GAME_ID_HERE}"
+ID="${2:-65cf794c7c7c4760b7fab2d051e9bc21}"   # 9ja Rescue on GameDistribution (owner, 18 Oct)
 rm -rf "$OUT" "$OUT.zip"
 VITE_AUTH=device VITE_PORTAL=gd VITE_GD_GAME_ID="$ID" npx vite build --outDir "$OUT" --emptyOutDir
 cd "$OUT"
