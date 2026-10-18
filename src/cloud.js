@@ -65,7 +65,7 @@ export const cloud = {
 
   // Called once after sign-in is ready, with the Firebase app (null = device-only copy).
   async init(app) {
-    if (!app || fs) return;
+    if (!app || fs || import.meta.env.VITE_AUTH === 'device') return;
     const m = await import('firebase/firestore/lite');
     fs = { db: m.getFirestore(app), ...m };
     setOnChange((name) => { if (fs) { dirty.add(name); schedule(); } });

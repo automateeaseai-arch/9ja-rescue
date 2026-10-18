@@ -238,7 +238,8 @@ export const auth = {
   get canGoogle() { return !!impl.canGoogle; },
   get app() { return impl.app ?? null; },
   init() {
-    started ??= ONLINE
+    // Spelled out (not ONLINE) so device-only builds leave Firebase out entirely.
+    started ??= import.meta.env.VITE_AUTH !== 'device'
       ? import('./auth-firebase.js').then((m) => m.createFirebaseAuth()).then((f) => { impl = f; })
       : Promise.resolve();
     return started;

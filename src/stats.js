@@ -19,7 +19,7 @@ function keep(store, key) {
 }
 
 export async function startStats(app) {
-  if (!app) return;
+  if (!app || import.meta.env.VITE_AUTH === 'device') return;
   if (!/(^|\.)9jarescue\.app$/.test(location.hostname) && !/[?&]stats\b/.test(location.search)) return;
   const fs = await import('firebase/firestore/lite');
   const db = fs.getFirestore(app);

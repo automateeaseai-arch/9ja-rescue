@@ -23,6 +23,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { install } from './install.js';
+import { portal } from './portal.js';
 import { shareRescue, resetShare, prepareShare } from './share.js';
 import { track } from './analytics.js';
 import { RULES, SITES, ARRIVALS, missionName, ROAM_BEATS, KIT_POOL, AMMO_SPOTS, DSS_AREA } from './config.js';
@@ -498,9 +499,26 @@ export function createMission(ctx) {
       <div>Captives rescued: <b>${list.length}</b> (${list.map((c) => c.name).join(', ')})</div>
       <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
       <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
-    if (!currentUser()) ui.resultsBody.insertAdjacentHTML('beforeend', '<div class="small guest-note">Playing as a guest: this progress is only on this phone. Create an account from <b>Save progress</b> on Home to keep it.</div>');
+    if (portal.on && first && rp > 0) {
+      // Game websites: an optional ad doubles this mission's RP.
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'gold ad-double';
+      b.textContent = `Watch an ad: double your RP (+${rp.toLocaleString()})`;
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        if (await portal.rewarded()) {
+          account.rp += rp;
+          saveAccount(account);
+          b.textContent = `+${rp.toLocaleString()} RP added`;
+          sound.ui('purchase');
+        } else { b.disabled = false; b.textContent = 'The ad didn\'t finish. Try again?'; }
+      });
+      ui.resultsBody.appendChild(b);
+    }
+    if (!currentUser() && !portal.on) ui.resultsBody.insertAdjacentHTML('beforeend', '<div class="small guest-note">Playing as a guest: this progress is only on this phone. Create an account from <b>Save progress</b> on Home to keep it.</div>');
     install.offerCard(ui.resultsBody, account.missionsCompleted);
     const shareBtn = document.getElementById('results-share'), cardImg = document.getElementById('results-card');
+    shareBtn.parentElement.hidden = portal.on;   // game websites: no links out
     resetShare(shareBtn, cardImg);
     prepareShare({ captives: list.map((c) => ({ name: c.name, persona: c.persona })), mission: missionName(setup).name, hero: setup.character?.name ?? '' }, cardImg);
   }
@@ -769,6 +787,7 @@ export function createMission(ctx) {
     siteInfo: (id) => siteOf(id),
     _generate: (seed, n = 1, recent) => generate(seed, n, 'ground', recent),
     _forceSeed: (seed) => { forcedSeed = seed; },
+    _complete: () => complete([...captives.units]),   // test hook: finish at once (results panel)
     openSpot,
     spotOf: spot,
     prepare,

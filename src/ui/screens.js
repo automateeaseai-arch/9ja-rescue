@@ -26,6 +26,7 @@ import { cloud } from '../cloud.js';
 import { startStats } from '../stats.js';
 import { install, IOS_TIP } from '../install.js';
 import { settings as gameSettings } from '../settings.js';
+import { portal } from '../portal.js';
 const openSettings = (cb) => gameSettings.open(cb);
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -110,6 +111,13 @@ export function createScreens() {
     wiz: null, selected: null, brief: 0, setup: null, mode: 'mission', notice: null, reset: null, busy: false,
   };
   const account = () => S.game.mission.account;
+  // Game websites: time left before the next "+1,000 RP" ad ('' when ready).
+  let lastReward = 0;
+  try { lastReward = Number(localStorage.getItem('9ja.adReward')) || 0; } catch { /* none */ }
+  const rewardWait = () => {
+    const left = Math.ceil((lastReward + 180000 - Date.now()) / 1000);
+    return left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : '';
+  };
   const charOf = () => Chars.get(S.selected) ?? Chars.get(account().activeCharacter);
   const lockedId = () => S.game?.mission.savedSummary()?.character?.id ?? null;
 
@@ -270,17 +278,17 @@ export function createScreens() {
         const name = c?.name ?? (S.user.guest ? 'Guest' : S.user.email.split('@')[0]);
         const pic = c ? Chars.look(c.gender, c.role).portrait : null;
         return `<div class="head">${logo()}<div class="welcome">Welcome${c ? ' back' : ''},<b>${esc(name)}</b></div></div>
-        <div class="top-r">${S.user.guest ? btn('Save progress', 'profile', { kind: 'gold', cls: 'small m-install', icon: I.save }) : ''}${install.can ? btn('Install game', 'install', { kind: 'outline', cls: 'small m-install', icon: I.download }) : ''}${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
+        <div class="top-r">${S.user.guest && !portal.on ? btn('Save progress', 'profile', { kind: 'gold', cls: 'small m-install', icon: I.save }) : ''}${install.can ? btn('Install game', 'install', { kind: 'outline', cls: 'small m-install', icon: I.download }) : ''}${chips(a)}<button class="m-avatar m-mute" data-act="mute" aria-label="${sound.muted ? 'Sound off: turn on' : 'Sound on: turn off'}" aria-pressed="${sound.muted}">${sound.muted ? I.soundOff : I.soundOn}</button><button class="m-avatar" data-act="profile" aria-label="Profile" ${pic ? `style="background-image:url('${pic}')"` : ''}>${pic ? '' : I.user}</button></div>
         <div class="missions">
           ${saved ? btn(`Continue mission<small>${esc(saved.name)} • ${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
-          ${btn('Test: glider jump', 'testGlider', { kind: 'outline', cls: 'small', icon: I.plane })}
+          ${portal.on ? btn(rewardWait() ? `Free RP in ${rewardWait()}` : 'Watch an ad: +1,000 RP', 'adReward', { kind: 'outline', cls: 'small', icon: I.coins, disabled: !!rewardWait() }) : btn('Test: glider jump', 'testGlider', { kind: 'outline', cls: 'small', icon: I.plane })}
           ${saveFailed() ? '<div class="m-alert">Saving failed on this device: progress may not be kept.</div>' : ''}
         </div>
         <div class="nav">
           ${btn('Characters', 'go', { kind: 'dark', icon: I.users, data: 'data-to="05" data-mode="manage"' })}
           ${btn('Shop', 'go', { kind: 'dark', icon: I.cart, data: 'data-to="10" data-mode="shop"' })}
-          ${btn('Rankings', 'rankings', { kind: 'dark', icon: I.trophy })}
+          ${portal.on ? '' : btn('Rankings', 'rankings', { kind: 'dark', icon: I.trophy })}
           ${btn('Profile', 'profile', { kind: 'dark', icon: I.user })}
           ${btn('Settings', 'settings', { kind: 'dark', icon: I.gear })}
         </div>`;
@@ -546,6 +554,7 @@ export function createScreens() {
     startedDone();
     if (handleLink()) return;
     const u = auth.current();
+    if (portal.on) { portal.start(); return playAsGuest(); }   // game websites: guest play only
     if (u) return signedIn(u);
     if (isGuestMode()) return playAsGuest();
     show(auth.knownDevice() ? '03A' : '02');
@@ -798,6 +807,14 @@ export function createScreens() {
     },
     profile() {
       const a = account();
+      if (portal.on) {
+        sheet(`<h2 class="m-title">Your progress</h2><p class="m-sub">Saved on this device.</p>
+          <div class="m-stats"><span>Rescue Points (RP)</span><b>${fmt(a.rp)}</b><span>Mission Points (MP)</span><b>${fmt(a.missionPoints)}</b>
+          <span>Missions completed</span><b>${fmt(a.missionsCompleted)}</b><span>Captives rescued</span><b>${fmt(a.captivesRescued)}</b>
+          <span>Characters</span><b>${Chars.list().length} of ${Chars.SLOTS}</b></div>
+          <div class="row">${btn('Close', 'closeSheet')}</div>`);
+        return;
+      }
       if (S.user.guest) {
         sheet(`<h2 class="m-title">Playing as a guest</h2><p>Your progress is saved only on this phone. If you clear your browser or change phones, it is lost. Create an account to keep it${cloud.enabled ? ', play on any phone and join the Rankings' : ''}: everything you have earned comes with you.</p>
           <div class="m-stats"><span>Rescue Points (RP)</span><b>${fmt(a.rp)}</b><span>Mission Points (MP)</span><b>${fmt(a.missionPoints)}</b>
@@ -819,6 +836,24 @@ export function createScreens() {
       rerender();
     },
     guest() { playAsGuest(); },
+    // Game websites: an optional ad for +1,000 RP, at most once every 3 minutes.
+    async adReward(b) {
+      if (rewardWait()) return;
+      b.disabled = true;
+      const ok = await portal.rewarded();
+      if (ok) {
+        const a = account();
+        a.rp += 1000;
+        saveAccount(a);
+        S.game?.mission.reloadAccount();
+        lastReward = Date.now();
+        try { localStorage.setItem('9ja.adReward', String(lastReward)); } catch { /* ignore */ }
+        sound.ui('purchase');
+        toast('+1,000 RP. Thanks for watching!');
+        const tick = setInterval(() => { if (S.id === '04' && !$('.m-sheet')) rerender(); if (!rewardWait()) clearInterval(tick); }, 15000);
+      } else toast('The ad didn\'t finish, so no reward this time.', true);
+      if (S.id === '04') rerender();
+    },
     leaveGuest(b) { closeSheet(); S.user = null; S.setup = null; show(b.dataset.to); },
     async signOut() { await cloud.flush().catch(() => {}); auth.signOut(); setUser(null); S.user = null; S.setup = null; closeSheet(); show('03A', { notice: 'Signed out.' }); },
 
@@ -973,6 +1008,8 @@ export function createScreens() {
   async function runLoading() {
     const g = S.game;
     let kind = S.params.kind;
+    await portal.interstitial();   // game websites: a short ad before each mission
+    if (S.id !== '13') return;
     const fill = $('#ml-fill'), pct = $('#ml-pct'), now = $('#ml-now'), tip = $('#ml-tip');
     const summary = kind === 'continue' ? g.mission.savedSummary() : null;
     const n = kind === 'continue' ? summary?.captives : S.setup?.captives.length;
