@@ -282,7 +282,7 @@ export function createScreens() {
         <div class="missions">
           ${saved ? btn(`Continue mission<small>${esc(saved.name)} • ${esc(saved.place)} • ${esc(saved.text)}${saved.character ? ` • ${esc(saved.character.name)}` : ''}</small>`, 'continue', { cls: 'm-big txt-btn', icon: I.save, right: I.next }) : ''}
           ${btn(`New mission${saved ? '' : '<small>Choose your character and loadout</small>'}`, 'newMission', { kind: saved ? 'green' : 'gold', cls: 'm-big', icon: I.map, right: I.next })}
-          ${portal.on ? btn(rewardWait() ? `Free RP in ${rewardWait()}` : 'Watch an ad: +1,000 RP', 'adReward', { kind: 'outline', cls: 'small', icon: I.coins, disabled: !!rewardWait() }) : btn('Test: glider jump', 'testGlider', { kind: 'outline', cls: 'small', icon: I.plane })}
+          ${portal.ads ? btn(rewardWait() ? `Free RP in ${rewardWait()}` : 'Watch an ad: +1,000 RP', 'adReward', { kind: 'outline', cls: 'small', icon: I.coins, disabled: !!rewardWait() }) : portal.on ? '' : btn('Test: glider jump', 'testGlider', { kind: 'outline', cls: 'small', icon: I.plane })}
           ${saveFailed() ? '<div class="m-alert">Saving failed on this device: progress may not be kept.</div>' : ''}
         </div>
         <div class="nav">

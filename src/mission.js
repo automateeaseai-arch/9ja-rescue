@@ -499,7 +499,7 @@ export function createMission(ctx) {
       <div>Captives rescued: <b>${list.length}</b> (${list.map((c) => c.name).join(', ')})</div>
       <div>Reward: <b>${first ? `+${rp.toLocaleString()} RP` : 'already paid'}</b> · <b>${first ? `+${RULES.missionPoints}` : '0'} Mission Points</b></div>
       <div class="small">Total: ${account.rp.toLocaleString()} RP · ${account.missionPoints} Mission Points · ${account.missionsCompleted} mission${account.missionsCompleted === 1 ? "" : "s"} completed</div>`;
-    if (portal.on && first && rp > 0) {
+    if (portal.ads && first && rp > 0) {
       // Game websites: an optional ad doubles this mission's RP.
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'gold ad-double';

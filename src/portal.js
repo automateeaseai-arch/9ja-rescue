@@ -9,6 +9,9 @@
 import { sound } from './sound.js';
 
 export const PORTAL = import.meta.env.VITE_PORTAL || null;
+// Ads only where the site's ad service is built in. CrazyGames' Basic Launch
+// (owner, 18 Oct) is a test with no ads and no CrazyGames code at all.
+const ADS = PORTAL === 'gd';
 // The game's ID from the GameDistribution dashboard (owner fills it in).
 export const GD_GAME_ID = import.meta.env.VITE_GD_GAME_ID || 'GAME_ID_HERE';
 
@@ -57,12 +60,13 @@ const sdk = () => window.gdsdk;
 
 export const portal = {
   on: !!PORTAL,
+  ads: ADS,
   // The game tells us how to pause and resume itself.
   setHooks(pause, resume) { onPause = pause; onResume = resume; },
-  start() { if (PORTAL) loadSdk(); },
+  start() { if (ADS) loadSdk(); },
   // A break between missions. Always resolves (an ad that fails just doesn't show).
   async interstitial() {
-    if (!PORTAL) return;
+    if (!ADS) return;
     await loadSdk();
     if (!sdk()?.showAd) return;
     try { await sdk().showAd(); } catch { /* no ad available */ }
@@ -70,7 +74,7 @@ export const portal = {
   },
   // A rewarded ad the player chose to watch: true if they watched it to the end.
   async rewarded() {
-    if (!PORTAL) return false;
+    if (!ADS) return false;
     await loadSdk();
     if (!sdk()?.showAd) return false;
     rewardDone = false;
