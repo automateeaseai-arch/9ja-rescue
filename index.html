@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d211a" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./ui/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="9ja Rescue" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" />
+    <title>9ja Rescue: free 3D rescue game</title>
+    <meta name="description" content="A free 3D rescue game set in Nigerian landscapes. Parachute in, free the captives and bring them home. No download: plays in your phone's browser." />
+    <!-- Link preview on X, WhatsApp, Facebook (owner, 15 Oct) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="9ja Rescue" />
+    <meta property="og:url" content="https://9jarescue.app/" />
+    <meta property="og:title" content="9ja Rescue: every rescue counts" />
+    <meta property="og:description" content="A free 3D rescue game set in Nigerian landscapes. No download: plays in your phone's browser." />
+    <meta property="og:image" content="https://9jarescue.app/ui/share-card.jpg" />
+    <meta property="og:image:secure_url" content="https://9jarescue.app/ui/share-card.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="9ja Rescue logo over a Nigerian savanna: Every rescue counts. Play free at 9jarescue.app" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="9ja Rescue: every rescue counts" />
+    <meta name="twitter:description" content="A free 3D rescue game set in Nigerian landscapes. No download: plays in your phone's browser." />
+    <meta name="twitter:image" content="https://9jarescue.app/ui/share-card.jpg" />
+    <script type="module" crossorigin src="./assets/main-DrUqVYh_.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/stats-DlLWNu_c.js">
+    <link rel="stylesheet" crossorigin href="./assets/main-DIOyYAnv.css">
+  </head>
+  <body class="in-menu">
+    <canvas id="game"></canvas>
+
+
+    <div id="hud" hidden>
+      <div class="status">
+        <div class="hp-row"><span class="hp-label">HP</span> <b id="hp-value">100</b>
+          <div id="health" hidden><div id="health-fill"></div><div class="hundred"></div></div></div>
+        <div id="counts">
+          <span class="chip c-kits" title="First-aid kits collected"><svg viewBox="0 0 20 20"><rect x="1" y="3" width="18" height="14" rx="3" fill="#2f9e4f"/><path d="M8.2 5.5h3.6v3.2H15v3.6h-3.2v3.2H8.2v-3.2H5V8.7h3.2z" fill="#fff"/></svg><b id="c-kits">0/8</b></span>
+          <span class="chip c-crates" title="Ammunition boxes opened"><svg viewBox="0 0 20 20"><rect x="1.5" y="6" width="17" height="11" rx="1.5" fill="#5b6a38"/><rect x="1.5" y="9.5" width="17" height="2.2" fill="#d9b23a"/><rect x="1" y="3.5" width="18" height="3" rx="1" fill="#4d5a32"/></svg><b id="c-crates">0/4</b></span>
+          <span class="chip c-hostiles" title="Hostiles left"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="#ff7a5c" stroke-width="2"/><circle cx="10" cy="10" r="2" fill="#ff7a5c"/><path d="M10 0v5M10 15v5M0 10h5M15 10h5" stroke="#ff7a5c" stroke-width="2"/></svg><b id="c-hostiles">10/10</b></span>
+          <span class="chip c-site" title="Site defenders left"><svg viewBox="0 0 20 20"><path d="M2 18V9l8-6 8 6v9z" fill="#c98a4b"/><rect x="8" y="12" width="4" height="6" fill="#3a2a16"/></svg><b id="c-site">6/6</b></span>
+          <span class="chip c-captives" title="Captives freed"><svg viewBox="0 0 20 20"><circle cx="10" cy="5" r="3.3" fill="#ffd34d"/><path d="M4 19c0-5 2.5-8 6-8s6 3 6 8z" fill="#ffd34d"/></svg><b id="c-captives">0/1</b></span>
+          <span class="chip c-grenades" title="Grenades" hidden><svg viewBox="0 0 20 20"><circle cx="10" cy="12" r="6.5" fill="#6b7a3a"/><rect x="8" y="2.5" width="4" height="4" fill="#9aa06a"/></svg><b id="c-grenades">0</b></span>
+        </div>
+        <div id="objective" class="sr-only" aria-live="polite">Loading the mission…</div>
+        <div id="save-warn" hidden>Saving failed on this device: progress may not be kept</div>
+      </div>
+      <button id="pause-btn" type="button" aria-label="Pause">II</button>
+    </div>
+
+    <div id="help" hidden>
+      <span class="desktop-only">WASD move · Shift run · Space jump / climb · F or right mouse fire / slash / punch · Q aim (kick unarmed) · K kick · R reload · E punch · C crouch · G grenade · 1 gun · 2 cutlass · 3 unarmed · V interact · tap a hostile to target · Esc pause</span>
+    </div>
+
+    <div id="waypoint" hidden><svg id="way-arrow" viewBox="0 0 24 24"><path d="M12 22 L3 9 A9 9 0 1 1 21 9 Z" fill="#ffd34d" stroke="#3a2a06" stroke-width="1.5"/><circle cx="12" cy="8.5" r="3.2" fill="#3a2a06"/></svg><div id="way-dist"></div></div>
+    <div id="guide" hidden><div id="guide-ring"><svg id="guide-arrow" viewBox="0 0 40 40"><path d="M20 3 L35 34 L20 26 L5 34 Z" fill="#ffd34d" stroke="#3a2a06" stroke-width="2" stroke-linejoin="round"/></svg></div><div id="guide-text"></div></div>
+    <div id="tip" hidden></div>
+
+    <div id="joystick" hidden><div id="joystick-knob"></div></div>
+    <button id="fire-btn" class="touch-ctrl" type="button" hidden>Fire</button>
+    <button id="aim-btn" class="touch-ctrl" type="button" hidden>Aim</button>
+    <button id="jump-btn" class="touch-ctrl" type="button" hidden>Jump</button>
+    <button id="crouch-btn" class="touch-ctrl" type="button" hidden>Crouch</button>
+    <button id="reload-btn" class="touch-ctrl" type="button" hidden>Reload</button>
+    <button id="throw-btn" class="touch-ctrl" type="button" hidden>Grenade</button>
+    <button id="punch-btn" type="button" hidden>Punch</button>
+    <div id="ammo">10 / 50</div>
+    <button id="interact-btn" type="button" hidden>Interact</button>
+    <div id="weapons"><button id="weapon-gun" type="button" class="on">Gun</button><button id="weapon-cutlass" type="button">Cutlass</button><button id="weapon-unarmed" type="button">Unarmed</button></div>
+
+    <div id="crosshair" hidden></div>
+    <div id="hurt"></div>
+    <div id="prompt" hidden></div>
+    <div id="climb-hint" hidden>Space: climb</div>
+
+    <div id="down" class="panel-screen" hidden>
+      <div class="panel">
+        <div class="big">You were knocked out</div>
+        <button id="down-checkpoint" type="button">Restart from checkpoint</button>
+        <button id="down-retry" type="button">Retry mission</button>
+      </div>
+    </div>
+    <div id="results" class="panel-screen" hidden>
+      <div class="panel"><div id="results-body"></div>
+        <div class="share-line"><img id="results-card" alt="Your rescue picture" hidden><button id="results-share" type="button" class="share">Share your rescue</button></div>
+        <button id="results-again" type="button" class="gold">Play again</button>
+        <button id="results-home" type="button">Home</button></div>
+    </div>
+    <div id="pause" class="panel-screen" hidden>
+      <div class="panel">
+        <div class="big">Paused</div>
+        <button id="pause-resume" type="button" class="gold">Resume</button>
+        <button id="pause-checkpoint" type="button">Restart from checkpoint</button>
+        <button id="pause-retry" type="button">Retry mission</button>
+        <button id="pause-exit" type="button">Save and exit</button>
+        <button id="pause-abandon" type="button">Abandon mission</button>
+        <button id="pause-sound" type="button">Sound: on</button>
+        <button id="pause-settings" type="button">Settings</button>
+        <div class="small" id="pause-info"></div>
+        <details>
+          <summary>Test tools</summary>
+          <div class="row"><button id="test-rp" type="button">+50,000 RP (to try the shop)</button></div>
+        </details>
+      </div>
+    </div>
+
+    <div id="menu" class="in"></div>
+
+    <div id="rotate">
+      <div>Rotate your phone to continue</div>
+    </div>
+
+  </body>
+</html>
